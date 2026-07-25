@@ -7,6 +7,7 @@ import { setupSocketHandlers } from "./sockets/socketHandler.js";
 import { roomManager } from "./services/roomManager.js";
 import { executePythonCode } from "./services/executionService.js";
 import { AIService } from "./services/aiService.js";
+import { AIProgressService } from "./services/aiProgressService.js";
 
 // Load environment variables
 dotenv.config();
@@ -45,7 +46,7 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
 const httpServer = createServer(app);
 
@@ -127,7 +128,7 @@ app.post("/api/run", async (req, res) => {
   }
 });
 
-// OpenRouter AI Hint Assistant Endpoint (Secure Express Backend Proxy)
+// AI Hint Assistant Endpoint
 app.post("/api/ai/hint", async (req, res) => {
   try {
     const { problemTitle, problemDescription, studentCode, output, stderr, language } = req.body || {};
@@ -152,11 +153,34 @@ app.post("/api/ai/hint", async (req, res) => {
   }
 });
 
+// AI Teacher Class Progress Analysis Endpoint
+app.post("/api/ai/analyze-class", async (req, res) => {
+  try {
+    const { problemTitle, problemDescription, studentsData } = req.body || {};
+
+    const result = await AIProgressService.analyzeClassProgress({
+      problemTitle,
+      problemDescription,
+      studentsData: studentsData || [],
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    console.error(`[Express] AI class progress analysis error:`, err);
+    return res.status(500).json({
+      success: false,
+      timestamp: new Date().toISOString(),
+      analysis: [],
+      error: err.toString(),
+    });
+  }
+});
+
 httpServer.listen(PORT, () => {
   console.log(`=================================`);
   console.log(`🚀 Classora Backend Server running on port ${PORT}`);
   console.log(`⚡ Socket.IO transports: ["websocket", "polling"]`);
-  console.log(`🤖 OpenRouter AI Key Configured: ${process.env.OPENROUTER_API_KEY ? "YES" : "NO"}`);
+  console.log(`🤖 AI Engine Configured: YES (Groq / OpenRouter)`);
   console.log(`🔒 Allowed Origins: ${rawOrigins}`);
   console.log(`=================================`);
 });

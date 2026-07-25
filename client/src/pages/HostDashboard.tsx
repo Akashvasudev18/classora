@@ -4,12 +4,14 @@ import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus, Sparkles, Stop
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
+import { analyzeClassProgress, StudentAnalysisResult } from "../services/AIProgressService";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPanel";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { LiveEditor } from "../components/classroom/LiveEditor";
 import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
 import { StudentCodeModal } from "../components/classroom/StudentCodeModal";
+import { StudentProgressDashboard } from "../components/classroom/StudentProgressDashboard";
 import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
@@ -38,6 +40,15 @@ export const HostDashboard: React.FC = () => {
   const [inspectedStudentCode, setInspectedStudentCode] = useState<string>("");
   const [inspectedStudentTerminal, setInspectedStudentTerminal] = useState<ExecutionResult | null>(null);
   const [isInspectionLoading, setIsInspectionLoading] = useState<boolean>(false);
+
+  // AI Class Progress Dashboard State
+  const [analysisResults, setAnalysisResults] = useState<StudentAnalysisResult[]>([]);
+  const [isAnalyzingClass, setIsAnalyzingClass] = useState<boolean>(false);
+  const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | undefined>(undefined);
+  const [analysisModelUsed, setAnalysisModelUsed] = useState<string | undefined>(undefined);
+
+  // Local map storing latest student code & terminal snapshots received over sockets
+  const [studentSnapshots, setStudentSnapshots] = useState<{ [studentId: string]: { code: string; terminalResult?: ExecutionResult } }>({});
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -115,6 +126,12 @@ export const HostDashboard: React.FC = () => {
       setIsInspectionLoading(false);
       setInspectedStudentCode(data.code);
       setInspectedStudentTerminal(data.terminalResult || null);
+
+      // Cache snapshot for class progress analysis
+      setStudentSnapshots((prev) => ({
+        ...prev,
+        [data.studentId]: { code: data.code, terminalResult: data.terminalResult },
+      }));
     };
 
     realtimeBus.on("join-request", handleJoinRequest);
@@ -174,6 +191,7 @@ export const HostDashboard: React.FC = () => {
   // Practice Session Handlers
   const handleStartPracticeSession = (problem: PracticeProblem) => {
     setActivePractice(problem);
+    setAnalysisResults([]);
     realtimeBus.emit("start-practice", { roomId: currentRoomId, practice: problem });
   };
 
@@ -184,7 +202,7 @@ export const HostDashboard: React.FC = () => {
     }
   };
 
-  // Student Inspection & Remote Assistance Handlers
+  // Student Inspection Handlers
   const handleInspectStudent = (student: Student) => {
     setInspectedStudent(student);
     setInspectedStudentCode("# Requesting latest code from student...\n");
@@ -214,6 +232,48 @@ export const HostDashboard: React.FC = () => {
       studentId: inspectedStudent.id,
       code: newCode,
     });
+  };
+
+  // AI Class Progress Analysis Trigger
+  const handleAnalyzeClassProgress = async () => {
+    if (isAnalyzingClass || students.length === 0) return;
+
+    setIsAnalyzingClass(true);
+
+    // Request latest code from all connected students over socket
+    students.forEach((student) => {
+      realtimeBus.emit("request-student-code", {
+        roomId: currentRoomId,
+        studentId: student.id,
+      });
+    });
+
+    // Short wait to gather socket responses
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const studentsData = students.map((s) => {
+      const snap = studentSnapshots[s.id];
+      return {
+        studentId: s.id,
+        studentName: s.name,
+        code: snap?.code || "# (No code written yet)",
+        output: snap?.terminalResult?.output,
+        stderr: snap?.terminalResult?.stderr,
+      };
+    });
+
+    const res = await analyzeClassProgress({
+      problemTitle: activePractice?.title || "Class Practice",
+      problemDescription: activePractice?.description || "",
+      studentsData,
+    });
+
+    setIsAnalyzingClass(false);
+    if (res.success && res.analysis) {
+      setAnalysisResults(res.analysis);
+      setLastAnalyzedAt(res.timestamp);
+      setAnalysisModelUsed(res.modelUsed);
+    }
   };
 
   const handleEndClass = () => {
@@ -311,7 +371,7 @@ export const HostDashboard: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-4">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
         {/* Mobile Urgent Pending Alert Banner */}
         {pendingStudents.length > 0 && (
           <div className="lg:hidden p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-between shadow-lg animate-pulse">
@@ -329,6 +389,19 @@ export const HostDashboard: React.FC = () => {
               Review
             </a>
           </div>
+        )}
+
+        {/* AI Student Progress Dashboard Panel (Rendered when Practice Session is Active) */}
+        {activePractice && (
+          <StudentProgressDashboard
+            analysisResults={analysisResults}
+            isLoading={isAnalyzingClass}
+            onAnalyzeClass={handleAnalyzeClassProgress}
+            onInspectStudent={handleInspectStudent}
+            lastAnalyzedAt={lastAnalyzedAt}
+            modelUsed={analysisModelUsed}
+            studentsList={students}
+          />
         )}
 
         {/* Main Grid Layout */}

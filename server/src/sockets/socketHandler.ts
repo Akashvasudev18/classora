@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { roomManager } from "../services/roomManager.js";
+import { executePythonCode } from "../services/executionService.js";
 import { v4 as uuidv4 } from "uuid";
 
 export const setupSocketHandlers = (io: Server) => {
@@ -169,7 +170,28 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 7. End Room Event (Purges memory & notifies everyone)
+    // 7. Code Execution Socket Event
+    socket.on("run-code", async ({ roomId, code }: { roomId: string; code: string }, callback) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      console.log(`[Run Code] Code execution requested for room ${cleanRoomId}`);
+
+      const result = await executePythonCode(code);
+
+      const executionPayload = {
+        roomId: cleanRoomId,
+        ...result,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Broadcast execution result to all connected clients in the room (teacher & students)
+      io.to(cleanRoomId).emit("execution-result", executionPayload);
+
+      if (typeof callback === "function") {
+        callback(executionPayload);
+      }
+    });
+
+    // 8. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -183,7 +205,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 8. Handle Disconnection & Memory Cleanup
+    // 9. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);

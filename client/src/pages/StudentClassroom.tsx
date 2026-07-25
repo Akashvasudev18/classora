@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, BookOpen, Users, LogOut, Shield } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
+import { ExecutionResult } from "../services/ExecutionService";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { LiveEditor } from "../components/classroom/LiveEditor";
@@ -23,6 +24,8 @@ export const StudentClassroom: React.FC = () => {
   const [rejectionReason, setRejectionReason] = useState<string>("");
   const [editorContent, setEditorContent] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -33,7 +36,7 @@ export const StudentClassroom: React.FC = () => {
         { roomId: currentRoomId, studentId, name: studentName },
         (res: any) => {
           if (res && res.status === "pending") {
-            // State remains pending
+            // Pending status
           } else if (res && !res.success) {
             navigate("/error", {
               state: { type: "invalid-code", message: res.message },
@@ -71,6 +74,12 @@ export const StudentClassroom: React.FC = () => {
       setStudents([...(data.students || [])]);
     };
 
+    const handleExecutionResult = (data: ExecutionResult) => {
+      if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      setIsExecuting(false);
+      setExecutionResult(data);
+    };
+
     const handleRoomEnded = (data: { roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       setStatus("ended");
@@ -88,6 +97,7 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("editor-update", handleEditorUpdate);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
+    realtimeBus.on("execution-result", handleExecutionResult);
     realtimeBus.on("room-ended", handleRoomEnded);
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
@@ -98,10 +108,15 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("editor-update", handleEditorUpdate);
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
+      realtimeBus.off("execution-result", handleExecutionResult);
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
   }, [currentRoomId, studentId, studentName, navigate]);
+
+  const handleClearTerminal = () => {
+    setExecutionResult(null);
+  };
 
   if (status === "pending") {
     return (
@@ -213,7 +228,13 @@ export const StudentClassroom: React.FC = () => {
       {/* Main Grid Layout */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 flex flex-col space-y-4">
-          <LiveEditor value={editorContent} isHost={false} />
+          <LiveEditor
+            value={editorContent}
+            isHost={false}
+            isExecuting={isExecuting}
+            executionResult={executionResult}
+            onClearTerminal={handleClearTerminal}
+          />
         </div>
 
         <div className="space-y-6 flex flex-col">

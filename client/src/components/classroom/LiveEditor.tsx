@@ -1,17 +1,28 @@
 import React, { useState } from "react";
 import Editor, { OnChange } from "@monaco-editor/react";
 import { Code, Radio, Copy, Check } from "lucide-react";
+import { RunButton } from "./RunButton";
+import { TerminalPanel } from "./TerminalPanel";
+import { ExecutionResult } from "../../services/ExecutionService";
 
 interface LiveEditorProps {
   value: string;
   isHost: boolean;
   onChange?: (newContent: string) => void;
+  onRunCode?: () => void;
+  isExecuting?: boolean;
+  executionResult?: ExecutionResult | null;
+  onClearTerminal?: () => void;
 }
 
 export const LiveEditor: React.FC<LiveEditorProps> = ({
   value,
   isHost,
   onChange,
+  onRunCode,
+  isExecuting = false,
+  executionResult = null,
+  onClearTerminal,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -28,9 +39,9 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
   };
 
   return (
-    <div className="space-y-3 flex flex-col flex-1">
+    <div className="space-y-4 flex flex-col flex-1">
       {/* Editor Header Bar */}
-      <div className="glass-panel rounded-2xl p-4 flex items-center justify-between shadow-md">
+      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3">
           <div
             className={`w-8 h-8 rounded-lg ${
@@ -47,30 +58,36 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
                 {isHost ? "Live Broadcast Python Editor" : "Live Teacher Python Broadcast"}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-mono font-bold">
-                PYTHON
+                PYTHON 3
               </span>
             </div>
             <p className="text-xs text-slate-400">
               {isHost
-                ? "Every keystroke in Monaco Editor is synchronized to students in real-time."
-                : "Synchronized Monaco view. Highlight, select, copy, and scroll code freely."}
+                ? "Keystrokes & Python execution results stream live to students."
+                : "Read-only view. Real-time code & terminal output stream from teacher."}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {!isHost && (
-            <button
-              onClick={handleCopy}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-300 flex items-center gap-2 transition-colors"
-              title="Copy Code"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-blue-400" />}
-              <span>{copied ? "Copied!" : "Copy Code"}</span>
-            </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Teacher Only: Run Code Button */}
+          {isHost && onRunCode && (
+            <RunButton
+              onRun={onRunCode}
+              isExecuting={isExecuting}
+            />
           )}
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+          <button
+            onClick={handleCopy}
+            className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-300 flex items-center gap-2 transition-colors cursor-pointer"
+            title="Copy Code"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-blue-400" />}
+            <span>{copied ? "Copied!" : "Copy Code"}</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-800">
             <Radio
               className={`w-3.5 h-3.5 ${
                 isHost ? "text-blue-400 animate-pulse" : "text-emerald-400"
@@ -82,7 +99,7 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
       </div>
 
       {/* Monaco Editor Container */}
-      <div className="flex-1 min-h-[380px] md:min-h-[500px] h-full rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl relative bg-[#1e1e1e]">
+      <div className="min-h-[380px] md:min-h-[440px] h-[440px] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl relative bg-[#1e1e1e]">
         <Editor
           height="100%"
           defaultLanguage="python"
@@ -110,6 +127,13 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
           }}
         />
       </div>
+
+      {/* Synchronized Terminal Panel Below Monaco Editor */}
+      <TerminalPanel
+        result={executionResult}
+        isExecuting={isExecuting}
+        onClear={onClearTerminal}
+      />
     </div>
   );
 };

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
+import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPanel";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
@@ -21,6 +22,8 @@ export const HostDashboard: React.FC = () => {
   );
   const [students, setStudents] = useState<Student[]>([]);
   const [pendingStudents, setPendingStudents] = useState<Student[]>([]);
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -81,10 +84,17 @@ export const HostDashboard: React.FC = () => {
       }
     };
 
+    const handleExecutionResult = (data: ExecutionResult) => {
+      if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      setIsExecuting(false);
+      setExecutionResult(data);
+    };
+
     realtimeBus.on("join-request", handleJoinRequest);
     realtimeBus.on("update-pending", handleUpdatePending);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
+    realtimeBus.on("execution-result", handleExecutionResult);
 
     return () => {
       clearInterval(heartbeatInterval);
@@ -93,6 +103,7 @@ export const HostDashboard: React.FC = () => {
       realtimeBus.off("update-pending", handleUpdatePending);
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
+      realtimeBus.off("execution-result", handleExecutionResult);
     };
   }, [currentRoomId]);
 
@@ -115,6 +126,20 @@ export const HostDashboard: React.FC = () => {
   const handleEditorChange = (newContent: string) => {
     setEditorContent(newContent);
     realtimeBus.emit("editor-change", { roomId: currentRoomId, content: newContent });
+  };
+
+  const handleRunCode = async () => {
+    if (isExecuting) return;
+    setIsExecuting(true);
+    setExecutionResult(null);
+
+    const result = await runPythonCode(editorContent, currentRoomId);
+    setIsExecuting(false);
+    setExecutionResult(result);
+  };
+
+  const handleClearTerminal = () => {
+    setExecutionResult(null);
   };
 
   const handleEndClass = () => {
@@ -229,12 +254,16 @@ export const HostDashboard: React.FC = () => {
             />
           </div>
 
-          {/* Left 2 Columns: Live Textarea Editor */}
+          {/* Left 2 Columns: Live Textarea / Monaco Editor + Terminal Output */}
           <div className="lg:col-span-2 flex flex-col space-y-4">
             <LiveEditor
               value={editorContent}
               isHost={true}
               onChange={handleEditorChange}
+              onRunCode={handleRunCode}
+              isExecuting={isExecuting}
+              executionResult={executionResult}
+              onClearTerminal={handleClearTerminal}
             />
           </div>
         </div>

@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { setupSocketHandlers } from "./sockets/socketHandler.js";
 import { roomManager } from "./services/roomManager.js";
+import { executePythonCode } from "./services/executionService.js";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
@@ -79,6 +80,50 @@ app.get("/api/rooms", (_req, res) => {
     activeRoomCount: Object.keys(roomManager.getAllRooms()).length,
     rooms: roomManager.getAllRooms(),
   });
+});
+
+// Code Execution Endpoint (Piston Proxy + Socket Broadcast)
+app.post("/api/run", async (req, res) => {
+  try {
+    const { code, roomId } = req.body || {};
+
+    if (!code || typeof code !== "string" || code.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        output: "Error: Code parameter is required and cannot be empty.",
+        stderr: "Empty code buffer.",
+        exitCode: 1,
+      });
+    }
+
+    const result = await executePythonCode(code);
+
+    // If roomId is provided, broadcast the execution result to all connected students in real time
+    if (roomId && typeof roomId === "string") {
+      const cleanRoomId = roomId.toUpperCase();
+      io.to(cleanRoomId).emit("execution-result", {
+        roomId: cleanRoomId,
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.json({
+      success: result.success,
+      output: result.output,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+    });
+  } catch (err: any) {
+    console.error(`[Express] Code execution endpoint error:`, err);
+    return res.status(500).json({
+      success: false,
+      output: `Internal Server Error: ${err.message || "Execution proxy failed"}`,
+      stderr: err.toString(),
+      exitCode: 1,
+    });
+  }
 });
 
 httpServer.listen(PORT, () => {

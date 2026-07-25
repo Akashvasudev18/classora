@@ -60,10 +60,11 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-white">
-                {isHost ? "Live Broadcast Python Editor" : "Live Teacher Python Broadcast"}
+                {isHost ? "Teacher Live Broadcast Editor" : "Teacher Live Broadcast"}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-mono font-bold">
-                PYTHON 3
+              <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-mono font-bold tracking-wider animate-pulse flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                LIVE
               </span>
             </div>
             <p className="text-xs text-slate-400">
@@ -89,13 +90,13 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
             title="Copy Code"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-blue-400" />}
-            <span>{copied ? "Copied!" : "Copy Code"}</span>
+            <span>{copied ? "Copy Code" : "Copy Code"}</span>
           </button>
 
           <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-800">
             <Radio
               className={`w-3.5 h-3.5 ${
-                isHost ? "text-blue-400 animate-pulse" : "text-emerald-400"
+                isHost ? "text-blue-400 animate-pulse" : "text-emerald-400 animate-pulse"
               }`}
             />
             <span>{isHost ? "Broadcasting" : "Live Sync"}</span>

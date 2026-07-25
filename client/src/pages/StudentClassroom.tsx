@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Users, LogOut, Shield } from "lucide-react";
+import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2, Sparkles } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
-import { ExecutionResult } from "../services/ExecutionService";
+import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { LiveEditor } from "../components/classroom/LiveEditor";
+import { PracticeEditor } from "../components/classroom/PracticeEditor";
+import { ResizableSplitLayout } from "../components/classroom/ResizableSplitLayout";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { Student } from "../components/classroom/WaitingRoomPanel";
 
@@ -26,6 +28,15 @@ export const StudentClassroom: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+
+  // Student Independent Practice IDE State
+  const [isPracticeEnabled, setIsPracticeEnabled] = useState<boolean>(false);
+  const [practiceCode, setPracticeCode] = useState<string>(
+    "# Student Practice Workspace\n# Write and test your own Python code here.\n\ndef practice():\n    print('My local Python practice workspace')\n\npractice()\n"
+  );
+  const [practiceStdin, setPracticeStdin] = useState<string>("");
+  const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
+  const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -114,8 +125,27 @@ export const StudentClassroom: React.FC = () => {
     };
   }, [currentRoomId, studentId, studentName, navigate]);
 
-  const handleClearTerminal = () => {
+  const handleClearTeacherTerminal = () => {
     setExecutionResult(null);
+  };
+
+  const handleClearPracticeTerminal = () => {
+    setPracticeResult(null);
+  };
+
+  const handleForkTeacherCode = () => {
+    setPracticeCode(editorContent);
+  };
+
+  const handleRunPracticeCode = async () => {
+    if (isPracticeExecuting) return;
+    setIsPracticeExecuting(true);
+    setPracticeResult(null);
+
+    // Private student practice execution (roomId = "" prevents broadcasting to room)
+    const result = await runPythonCode(practiceCode, "", practiceStdin);
+    setIsPracticeExecuting(false);
+    setPracticeResult(result);
   };
 
   if (status === "pending") {
@@ -203,6 +233,24 @@ export const StudentClassroom: React.FC = () => {
 
         {/* Center / Right Controls */}
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Practice Toggle Button */}
+          <button
+            onClick={() => setIsPracticeEnabled((prev) => !prev)}
+            className={`px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer border ${
+              isPracticeEnabled
+                ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-cyan-400/40 shadow-cyan-500/20"
+                : "bg-slate-900 hover:bg-slate-800 text-cyan-300 border-cyan-500/30"
+            }`}
+          >
+            <Code2 className="w-4 h-4 text-cyan-300" />
+            <span>{isPracticeEnabled ? "Disable Practice" : "Enable Practice"}</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isPracticeEnabled ? "bg-cyan-300 animate-ping" : "bg-slate-600"
+              }`}
+            ></span>
+          </button>
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
             <Shield className="w-4 h-4 text-indigo-400" />
             <span>Teacher Online</span>
@@ -225,20 +273,52 @@ export const StudentClassroom: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Grid Layout */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 flex flex-col space-y-4">
-          <LiveEditor
-            value={editorContent}
-            isHost={false}
-            isExecuting={isExecuting}
-            executionResult={executionResult}
-            onClearTerminal={handleClearTerminal}
-            stdin={executionResult?.stdin || ""}
-          />
+      {/* Main Container Layout */}
+      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Main Workspace Area (3 Columns or Full Width when Practice Enabled) */}
+        <div className="lg:col-span-3 flex flex-col space-y-4 min-w-0">
+          {!isPracticeEnabled ? (
+            /* Single Full-Width Teacher Broadcast View (Default OFF) */
+            <LiveEditor
+              value={editorContent}
+              isHost={false}
+              isExecuting={isExecuting}
+              executionResult={executionResult}
+              onClearTerminal={handleClearTeacherTerminal}
+              stdin={executionResult?.stdin || ""}
+            />
+          ) : (
+            /* Resizable Split-Screen View (When Practice ON) */
+            <ResizableSplitLayout
+              left={
+                <LiveEditor
+                  value={editorContent}
+                  isHost={false}
+                  isExecuting={isExecuting}
+                  executionResult={executionResult}
+                  onClearTerminal={handleClearTeacherTerminal}
+                  stdin={executionResult?.stdin || ""}
+                />
+              }
+              right={
+                <PracticeEditor
+                  value={practiceCode}
+                  onChange={setPracticeCode}
+                  onFork={handleForkTeacherCode}
+                  onRun={handleRunPracticeCode}
+                  isExecuting={isPracticeExecuting}
+                  executionResult={practiceResult}
+                  onClearTerminal={handleClearPracticeTerminal}
+                  stdin={practiceStdin}
+                  onChangeStdin={setPracticeStdin}
+                />
+              }
+            />
+          )}
         </div>
 
-        <div className="space-y-6 flex flex-col">
+        {/* Rightmost Sidebar: Connected Students List */}
+        <div className="space-y-6 flex flex-col min-w-0">
           <StudentListPanel
             students={students}
             currentStudentName={studentName}

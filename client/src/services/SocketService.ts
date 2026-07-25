@@ -7,7 +7,19 @@ type StatusListener = (status: ConnectionStatus) => void;
 export const RENDER_BACKEND_URL = "https://classora-3s1d.onrender.com";
 
 export function resolveTargetSocketUrl(): string {
-  // 1. Check manual user selection from localStorage
+  // 1. If running locally on localhost dev server, default to local port 5000
+  if (typeof window !== "undefined" && window.location) {
+    const hostname = window.location.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      const saved = localStorage.getItem("classora_socket_url");
+      if (saved && saved.trim() !== "") {
+        return saved.trim().replace(/\/$/, "");
+      }
+      return "http://localhost:5000";
+    }
+  }
+
+  // 2. Check manual override from localStorage if user picked custom server
   if (typeof window !== "undefined") {
     const saved = localStorage.getItem("classora_socket_url");
     if (saved && saved.trim() !== "") {
@@ -15,21 +27,7 @@ export function resolveTargetSocketUrl(): string {
     }
   }
 
-  // 2. If running on localhost or local IP dev server, target local port 5000
-  if (typeof window !== "undefined" && window.location) {
-    const hostname = window.location.hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:5000";
-    }
-  }
-
-  // 3. Check VITE_SOCKET_URL if defined and valid
-  const envUrl = import.meta.env.VITE_SOCKET_URL;
-  if (envUrl && envUrl.trim() !== "" && !envUrl.includes("vercel.app")) {
-    return envUrl.trim().replace(/\/$/, "");
-  }
-
-  // 4. Live Render Backend fallback
+  // 3. For ALL public Vercel & mobile visitors worldwide, default to Render Cloud Backend!
   return RENDER_BACKEND_URL;
 }
 

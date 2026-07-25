@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ConnectionStatus, socketService } from "../../services/SocketService";
+import { ConnectionStatus, socketService, RENDER_BACKEND_URL } from "../../services/SocketService";
 import { Server, Wifi, Globe, Monitor, Check, X, RefreshCw } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -74,21 +74,42 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
               </div>
               <div>
                 <h2 className="text-base font-bold text-white">Socket Network Selector</h2>
-                <p className="text-xs text-slate-400">Active: <span className="font-mono text-blue-400">{currentUrl}</span></p>
+                <p className="text-xs text-slate-400">Active: <span className="font-mono text-blue-400 truncate max-w-[200px] inline-block align-bottom">{currentUrl}</span></p>
               </div>
             </div>
 
             <div className="space-y-2">
               <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Select Network Option
+                Select Backend Server
               </label>
 
-              {/* Option 1: Localhost */}
+              {/* Option 1: Live Render Production Backend */}
+              <button
+                onClick={() => handleSelectServer(RENDER_BACKEND_URL)}
+                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                  currentUrl.includes("onrender.com")
+                    ? "bg-blue-600/15 border-blue-500/50"
+                    : "bg-slate-900 hover:bg-slate-800 border-slate-800"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-bold text-white">Render Cloud Backend</div>
+                    <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
+                      {RENDER_BACKEND_URL}
+                    </div>
+                  </div>
+                </div>
+                {currentUrl.includes("onrender.com") && <Check className="w-4 h-4 text-blue-400" />}
+              </button>
+
+              {/* Option 2: Localhost */}
               <button
                 onClick={() => handleSelectServer("http://localhost:5000")}
                 className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
                   currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1")
-                    ? "bg-blue-600/15 border-blue-500/50"
+                    ? "bg-indigo-600/15 border-indigo-500/50"
                     : "bg-slate-900 hover:bg-slate-800 border-slate-800"
                 }`}
               >
@@ -99,10 +120,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
                     <div className="text-[10px] text-slate-400 font-mono">http://localhost:5000</div>
                   </div>
                 </div>
-                {currentUrl.includes("localhost") && <Check className="w-4 h-4 text-blue-400" />}
+                {currentUrl.includes("localhost") && <Check className="w-4 h-4 text-indigo-400" />}
               </button>
 
-              {/* Option 2: Local Wi-Fi IP */}
+              {/* Option 3: Local Wi-Fi IP */}
               <button
                 onClick={() => handleSelectServer("http://10.240.8.91:5000")}
                 className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
@@ -119,27 +140,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
                   </div>
                 </div>
                 {currentUrl.includes("10.240.8.91") && <Check className="w-4 h-4 text-emerald-400" />}
-              </button>
-
-              {/* Option 3: Cloudflare Tunnel */}
-              <button
-                onClick={() => handleSelectServer("https://marijuana-caps-balloon-carlo.trycloudflare.com")}
-                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                  currentUrl.includes("trycloudflare.com")
-                    ? "bg-amber-600/15 border-amber-500/50"
-                    : "bg-slate-900 hover:bg-slate-800 border-slate-800"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Globe className="w-4 h-4 text-amber-400 shrink-0" />
-                  <div>
-                    <div className="text-xs font-bold text-white">Cloudflare Tunnel</div>
-                    <div className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
-                      https://marijuana-caps-balloon-carlo.trycloudflare.com
-                    </div>
-                  </div>
-                </div>
-                {currentUrl.includes("trycloudflare.com") && <Check className="w-4 h-4 text-amber-400" />}
               </button>
             </div>
 

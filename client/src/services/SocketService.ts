@@ -4,6 +4,8 @@ export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "di
 
 type StatusListener = (status: ConnectionStatus) => void;
 
+export const RENDER_BACKEND_URL = "https://classora-3s1d.onrender.com";
+
 export function resolveTargetSocketUrl(): string {
   // 1. Check manual user selection from localStorage
   if (typeof window !== "undefined") {
@@ -27,8 +29,8 @@ export function resolveTargetSocketUrl(): string {
     return envUrl.trim().replace(/\/$/, "");
   }
 
-  // 4. Public Tunnel fallback
-  return "https://marijuana-caps-balloon-carlo.trycloudflare.com";
+  // 4. Live Render Backend fallback
+  return RENDER_BACKEND_URL;
 }
 
 class SocketService {
@@ -50,7 +52,7 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0.5,
-      timeout: 15000,
+      timeout: 20000,
     });
 
     this.setupListeners();
@@ -127,7 +129,7 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0.5,
-      timeout: 15000,
+      timeout: 20000,
     });
     this.setupListeners();
   }

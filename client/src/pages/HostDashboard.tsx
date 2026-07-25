@@ -40,19 +40,6 @@ export const HostDashboard: React.FC = () => {
     claimHostRoom();
     socket.on("connect", claimHostRoom);
 
-    // 300ms Polling Sync for 100% instant re-renders when student join requests arrive
-    const syncInterval = setInterval(() => {
-      const room = realtimeBus.getRoomState(currentRoomId);
-      if (room) {
-        if (room.pendingStudents) {
-          setPendingStudents([...room.pendingStudents]);
-        }
-        if (room.students) {
-          setStudents([...room.students]);
-        }
-      }
-    }, 300);
-
     const handleJoinRequest = (data: any) => {
       if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       if (data?.pendingStudents) {
@@ -88,7 +75,6 @@ export const HostDashboard: React.FC = () => {
     realtimeBus.on("student-disconnected", handleStudentConnected);
 
     return () => {
-      clearInterval(syncInterval);
       socket.off("connect", claimHostRoom);
       realtimeBus.off("join-request", handleJoinRequest);
       realtimeBus.off("update-pending", handleUpdatePending);

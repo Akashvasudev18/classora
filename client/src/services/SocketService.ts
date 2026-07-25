@@ -4,26 +4,45 @@ export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "di
 
 type StatusListener = (status: ConnectionStatus) => void;
 
+export function resolveTargetSocketUrl(): string {
+  // 1. Check manual user selection from localStorage
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem("classora_socket_url");
+    if (saved && saved.trim() !== "") {
+      return saved.trim().replace(/\/$/, "");
+    }
+  }
+
+  // 2. If running on localhost or local IP dev server, target local port 5000
+  if (typeof window !== "undefined" && window.location) {
+    const hostname = window.location.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:5000";
+    }
+  }
+
+  // 3. Check VITE_SOCKET_URL if defined and valid
+  const envUrl = import.meta.env.VITE_SOCKET_URL;
+  if (envUrl && envUrl.trim() !== "" && !envUrl.includes("vercel.app")) {
+    return envUrl.trim().replace(/\/$/, "");
+  }
+
+  // 4. Public Tunnel fallback
+  return "https://marijuana-caps-balloon-carlo.trycloudflare.com";
+}
+
 class SocketService {
   private static instance: SocketService;
   private socket: Socket;
   private status: ConnectionStatus = "connecting";
   private statusListeners: Set<StatusListener> = new Set();
+  private currentUrl: string;
 
   private constructor() {
-    // Resolve socket URL dynamically from VITE_SOCKET_URL or current window location
-    const configuredUrl = import.meta.env.VITE_SOCKET_URL;
-    let targetUrl = "";
+    this.currentUrl = resolveTargetSocketUrl();
+    console.log(`[SocketService] Initializing Socket connection to: "${this.currentUrl}"`);
 
-    if (configuredUrl && configuredUrl.trim() !== "") {
-      targetUrl = configuredUrl.trim().replace(/\/$/, "");
-    } else if (typeof window !== "undefined" && window.location && window.location.origin) {
-      targetUrl = window.location.origin;
-    }
-
-    console.log(`[SocketService] Initializing Singleton Socket connection to: "${targetUrl || "default"}"`);
-
-    this.socket = io(targetUrl, {
+    this.socket = io(this.currentUrl, {
       autoConnect: true,
       transports: ["websocket", "polling"],
       reconnection: true,
@@ -31,7 +50,7 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0.5,
-      timeout: 20000,
+      timeout: 15000,
     });
 
     this.setupListeners();
@@ -46,26 +65,25 @@ class SocketService {
 
   private setupListeners(): void {
     this.socket.on("connect", () => {
-      console.log(`[SocketService] Connected. Socket ID: ${this.socket.id}`);
+      console.log(`[SocketService] Connected to ${this.currentUrl}. Socket ID: ${this.socket.id}`);
       this.setStatus("connected");
     });
 
     this.socket.on("disconnect", (reason) => {
-      console.warn(`[SocketService] Disconnected. Reason: ${reason}`);
+      console.warn(`[SocketService] Disconnected from ${this.currentUrl}. Reason: ${reason}`);
       if (reason === "io server disconnect") {
-        // Server disconnected the socket explicitly; attempt manual reconnect
         this.socket.connect();
       }
       this.setStatus("disconnected");
     });
 
     this.socket.io.on("reconnect_attempt", (attempt) => {
-      console.log(`[SocketService] Reconnecting... Attempt #${attempt}`);
+      console.log(`[SocketService] Reconnecting to ${this.currentUrl}... Attempt #${attempt}`);
       this.setStatus("reconnecting");
     });
 
     this.socket.io.on("reconnect", (attempt) => {
-      console.log(`[SocketService] Reconnected successfully after ${attempt} attempt(s)`);
+      console.log(`[SocketService] Reconnected to ${this.currentUrl} after ${attempt} attempt(s)`);
       this.setStatus("connected");
     });
 
@@ -74,13 +92,8 @@ class SocketService {
       this.setStatus("reconnecting");
     });
 
-    this.socket.io.on("reconnect_failed", () => {
-      console.error(`[SocketService] Reconnection failed completely.`);
-      this.setStatus("disconnected");
-    });
-
     this.socket.on("connect_error", (error) => {
-      console.warn(`[SocketService] Connect error:`, error.message);
+      console.warn(`[SocketService] Connect error on ${this.currentUrl}:`, error.message);
       if (this.status !== "connected") {
         this.setStatus("reconnecting");
       }
@@ -94,6 +107,43 @@ class SocketService {
     }
   }
 
+  public switchServerUrl(newUrl: string): void {
+    if (!newUrl) return;
+    const cleanUrl = newUrl.trim().replace(/\/$/, "");
+    this.currentUrl = cleanUrl;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("classora_socket_url", cleanUrl);
+    }
+    console.log(`[SocketService] Switching Socket server to: "${cleanUrl}"`);
+    this.setStatus("connecting");
+    this.socket.removeAllListeners();
+    this.socket.disconnect();
+
+    this.socket = io(cleanUrl, {
+      autoConnect: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 15000,
+    });
+    this.setupListeners();
+  }
+
+  public resetToDefaultUrl(): void {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("classora_socket_url");
+    }
+    const defaultUrl = resolveTargetSocketUrl();
+    this.switchServerUrl(defaultUrl);
+  }
+
+  public getCurrentUrl(): string {
+    return this.currentUrl;
+  }
+
   public getStatus(): ConnectionStatus {
     return this.status;
   }
@@ -104,7 +154,6 @@ class SocketService {
 
   public subscribeStatus(listener: StatusListener): () => void {
     this.statusListeners.add(listener);
-    // Trigger current status immediately for late subscribers
     listener(this.status);
 
     return () => {

@@ -42,23 +42,6 @@ export const StudentClassroom: React.FC = () => {
       }
     );
 
-    // 300ms continuous polling check for instant host approval detection
-    const checkInterval = setInterval(() => {
-      const room = realtimeBus.getRoomState(currentRoomId);
-      if (room) {
-        const isApproved = room.students?.some((s: any) => s.id === studentId);
-        if (isApproved) {
-          setStatus("approved");
-          if (room.editorContent !== undefined) {
-            setEditorContent(room.editorContent);
-          }
-          if (room.students) {
-            setStudents([...room.students]);
-          }
-        }
-      }
-    }, 300);
-
     const handleStudentApproved = (data: { roomId: string; studentId?: string; editorContent: string }) => {
       if (data.studentId && data.studentId !== studentId) return;
       setStatus("approved");
@@ -104,7 +87,6 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
     return () => {
-      clearInterval(checkInterval);
       realtimeBus.off("student-approved", handleStudentApproved);
       realtimeBus.off("student-rejected", handleStudentRejected);
       realtimeBus.off("editor-update", handleEditorUpdate);

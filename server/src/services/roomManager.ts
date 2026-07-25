@@ -4,11 +4,23 @@ export interface Student {
   socketId: string;
 }
 
+export interface PracticeProblem {
+  id: string;
+  title: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  estimatedTime: string;
+  description: string;
+  starterCode: string;
+  exampleInput?: string;
+  exampleOutput?: string;
+}
+
 export interface Room {
   teacherSocket: string;
   students: Student[];
   pendingStudents: Student[];
   editorContent: string;
+  activePractice: PracticeProblem | null;
 }
 
 export class RoomManager {
@@ -21,6 +33,7 @@ export class RoomManager {
       students: [],
       pendingStudents: [],
       editorContent: "# Welcome to Classora Live Python Classroom!\n# Teacher's live Python code will appear here in real-time.\n\ndef classora_session():\n    print('Learn Together. Live.')\n",
+      activePractice: null,
     };
     this.rooms[roomId] = room;
     return room;
@@ -92,6 +105,21 @@ export class RoomManager {
     const room = this.rooms[roomId];
     if (!room) return false;
     room.editorContent = content;
+    return true;
+  }
+
+  // Practice Session Management
+  public startPracticeSession(roomId: string, practice: PracticeProblem): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    room.activePractice = practice;
+    return true;
+  }
+
+  public endPracticeSession(roomId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+    room.activePractice = null;
     return true;
   }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2 } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
@@ -10,7 +10,9 @@ import { LiveEditor } from "../components/classroom/LiveEditor";
 import { PracticeEditor } from "../components/classroom/PracticeEditor";
 import { ResizableSplitLayout } from "../components/classroom/ResizableSplitLayout";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
+import { ProblemPanel } from "../components/classroom/ProblemPanel";
 import { Student } from "../components/classroom/WaitingRoomPanel";
+import { PracticeProblem } from "../shared/problems";
 
 export const StudentClassroom: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
@@ -29,8 +31,9 @@ export const StudentClassroom: React.FC = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
-  // Student Independent Practice IDE State
+  // Practice Session & Practice IDE State for Student
   const [isPracticeEnabled, setIsPracticeEnabled] = useState<boolean>(false);
+  const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
   const [practiceCode, setPracticeCode] = useState<string>(
     "# Student Practice Workspace\n# Write and test your own Python code here.\n\ndef practice():\n    print('My local Python practice workspace')\n\npractice()\n"
   );
@@ -60,12 +63,22 @@ export const StudentClassroom: React.FC = () => {
     emitJoinRequest();
     socket.on("connect", emitJoinRequest);
 
-    const handleStudentApproved = (data: { roomId: string; studentId?: string; editorContent: string }) => {
+    const handleStudentApproved = (data: { roomId: string; studentId?: string; editorContent: string; activePractice?: PracticeProblem }) => {
       if (data.studentId && data.studentId !== studentId) return;
       console.log(`[StudentClassroom] Approved by host for room ${currentRoomId}`);
       setStatus("approved");
       if (data.editorContent !== undefined) {
         setEditorContent(data.editorContent);
+      }
+      if (data.activePractice) {
+        setActivePractice(data.activePractice);
+        setIsPracticeEnabled(true);
+        if (data.activePractice.starterCode) {
+          setPracticeCode(data.activePractice.starterCode);
+        }
+        if (data.activePractice.exampleInput && data.activePractice.exampleInput !== "None") {
+          setPracticeStdin(data.activePractice.exampleInput);
+        }
       }
     };
 
@@ -91,6 +104,27 @@ export const StudentClassroom: React.FC = () => {
       setExecutionResult(data);
     };
 
+    // Practice Session Listener (Auto-opens practice mode & loads problem)
+    const handlePracticeStarted = (data: { practice: PracticeProblem; roomId?: string }) => {
+      if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      console.log("[StudentClassroom] Practice Session Started:", data.practice.title);
+      setActivePractice(data.practice);
+      setIsPracticeEnabled(true);
+
+      if (data.practice.starterCode) {
+        setPracticeCode(data.practice.starterCode);
+      }
+      if (data.practice.exampleInput && data.practice.exampleInput !== "None") {
+        setPracticeStdin(data.practice.exampleInput);
+      }
+    };
+
+    const handlePracticeEnded = (data: { roomId?: string }) => {
+      if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      console.log("[StudentClassroom] Practice Session Ended");
+      setActivePractice(null);
+    };
+
     const handleRoomEnded = (data: { roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       setStatus("ended");
@@ -109,6 +143,9 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
     realtimeBus.on("execution-result", handleExecutionResult);
+    realtimeBus.on("practice-started", handlePracticeStarted);
+    realtimeBus.on("receive-practice", handlePracticeStarted);
+    realtimeBus.on("practice-ended", handlePracticeEnded);
     realtimeBus.on("room-ended", handleRoomEnded);
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
@@ -120,6 +157,9 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
       realtimeBus.off("execution-result", handleExecutionResult);
+      realtimeBus.off("practice-started", handlePracticeStarted);
+      realtimeBus.off("receive-practice", handlePracticeStarted);
+      realtimeBus.off("practice-ended", handlePracticeEnded);
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
@@ -301,17 +341,28 @@ export const StudentClassroom: React.FC = () => {
                 />
               }
               right={
-                <PracticeEditor
-                  value={practiceCode}
-                  onChange={setPracticeCode}
-                  onFork={handleForkTeacherCode}
-                  onRun={handleRunPracticeCode}
-                  isExecuting={isPracticeExecuting}
-                  executionResult={practiceResult}
-                  onClearTerminal={handleClearPracticeTerminal}
-                  stdin={practiceStdin}
-                  onChangeStdin={setPracticeStdin}
-                />
+                <div className="space-y-4 flex flex-col flex-1">
+                  {/* Problem Panel (Rendered when activePractice session is running) */}
+                  {activePractice && (
+                    <ProblemPanel
+                      problem={activePractice}
+                      onUseExampleInput={(input) => setPracticeStdin(input)}
+                    />
+                  )}
+
+                  {/* Student Practice Editor */}
+                  <PracticeEditor
+                    value={practiceCode}
+                    onChange={setPracticeCode}
+                    onFork={handleForkTeacherCode}
+                    onRun={handleRunPracticeCode}
+                    isExecuting={isPracticeExecuting}
+                    executionResult={practiceResult}
+                    onClearTerminal={handleClearPracticeTerminal}
+                    stdin={practiceStdin}
+                    onChangeStdin={setPracticeStdin}
+                  />
+                </div>
               }
             />
           )}

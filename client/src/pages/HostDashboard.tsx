@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus } from "lucide-react";
+import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus, Sparkles, StopCircle } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
@@ -8,6 +8,8 @@ import { StatusBadge } from "../components/common/StatusBadge";
 import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPanel";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { LiveEditor } from "../components/classroom/LiveEditor";
+import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
+import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
@@ -26,6 +28,10 @@ export const HostDashboard: React.FC = () => {
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
 
+  // Practice Session State for Host
+  const [isPracticeModalOpen, setIsPracticeModalOpen] = useState<boolean>(false);
+  const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
+
   useEffect(() => {
     if (!currentRoomId) return;
 
@@ -36,6 +42,9 @@ export const HostDashboard: React.FC = () => {
           setPendingStudents([...(res.roomState.pendingStudents || [])]);
           if (res.roomState.editorContent) {
             setEditorContent(res.roomState.editorContent);
+          }
+          if (res.roomState.activePractice) {
+            setActivePractice(res.roomState.activePractice);
           }
         }
       });
@@ -51,6 +60,9 @@ export const HostDashboard: React.FC = () => {
           if (res && res.roomState) {
             setPendingStudents([...(res.roomState.pendingStudents || [])]);
             setStudents([...(res.roomState.students || [])]);
+            if (res.roomState.activePractice !== undefined) {
+              setActivePractice(res.roomState.activePractice);
+            }
           }
         });
       }
@@ -143,6 +155,19 @@ export const HostDashboard: React.FC = () => {
     setExecutionResult(null);
   };
 
+  // Practice Session Handlers
+  const handleStartPracticeSession = (problem: PracticeProblem) => {
+    setActivePractice(problem);
+    realtimeBus.emit("start-practice", { roomId: currentRoomId, practice: problem });
+  };
+
+  const handleEndPracticeSession = () => {
+    if (window.confirm("Are you sure you want to end the active practice session for all students?")) {
+      setActivePractice(null);
+      realtimeBus.emit("end-practice", { roomId: currentRoomId });
+    }
+  };
+
   const handleEndClass = () => {
     if (window.confirm("Are you sure you want to end this class? All connected students will be redirected.")) {
       realtimeBus.emit("end-room", { roomId: currentRoomId });
@@ -152,7 +177,7 @@ export const HostDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation */}
+      {/* Top Navigation Header */}
       <header className="px-4 md:px-6 py-3.5 border-b border-slate-800/80 bg-[#111621]/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shadow-lg">
         <div className="flex items-center gap-3">
           <button
@@ -178,8 +203,33 @@ export const HostDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Center / Right Metrics */}
+        {/* Center / Right Metrics & Practice Session Control */}
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Start Practice / End Practice Toggle Button */}
+          {!activePractice ? (
+            <button
+              onClick={() => setIsPracticeModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-cyan-200" />
+              <span>Start Practice</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                <span>Session: {activePractice.title}</span>
+              </div>
+              <button
+                onClick={handleEndPracticeSession}
+                className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <StopCircle className="w-4 h-4" />
+                <span>End Practice</span>
+              </button>
+            </div>
+          )}
+
           {/* Room Code Badge */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-inner">
             <span className="text-xs font-semibold text-slate-400">ROOM:</span>
@@ -271,6 +321,13 @@ export const HostDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Start Practice Session Modal */}
+      <StartPracticeModal
+        isOpen={isPracticeModalOpen}
+        onClose={() => setIsPracticeModalOpen(false)}
+        onStartSession={handleStartPracticeSession}
+      />
     </div>
   );
 };

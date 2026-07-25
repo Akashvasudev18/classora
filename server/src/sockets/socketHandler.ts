@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { roomManager } from "../services/roomManager.js";
+import { roomManager, PracticeProblem } from "../services/roomManager.js";
 import { executePythonCode } from "../services/executionService.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -114,6 +114,7 @@ export const setupSocketHandlers = (io: Server) => {
           roomId: cleanRoomId,
           studentId: approvedStudent.id,
           editorContent: room.editorContent,
+          activePractice: room.activePractice,
         };
 
         io.to(approvedStudent.socketId).emit("student-approved", approvalPayload);
@@ -170,7 +171,40 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 7. Code Execution Socket Event with stdin support
+    // 7. Practice Session Events (Start & End Practice)
+    socket.on("start-practice", ({ roomId, practice }: { roomId: string; practice: PracticeProblem }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      console.log(`[Practice Session] Teacher started practice in ${cleanRoomId}: "${practice.title}"`);
+
+      roomManager.startPracticeSession(cleanRoomId, practice);
+
+      const payload = {
+        roomId: cleanRoomId,
+        practice,
+        startedAt: new Date().toISOString(),
+      };
+
+      // Broadcast to all students in room
+      io.to(cleanRoomId).emit("practice-started", payload);
+      io.to(cleanRoomId).emit("receive-practice", payload);
+    });
+
+    socket.on("end-practice", ({ roomId }: { roomId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      console.log(`[Practice Session] Teacher ended practice in ${cleanRoomId}`);
+
+      roomManager.endPracticeSession(cleanRoomId);
+
+      const payload = {
+        roomId: cleanRoomId,
+        endedAt: new Date().toISOString(),
+      };
+
+      // Broadcast to all students in room
+      io.to(cleanRoomId).emit("practice-ended", payload);
+    });
+
+    // 8. Code Execution Socket Event with stdin support
     socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
@@ -184,14 +218,16 @@ export const setupSocketHandlers = (io: Server) => {
       };
 
       // Broadcast execution result to all connected clients in the room (teacher & students)
-      io.to(cleanRoomId).emit("execution-result", executionPayload);
+      if (cleanRoomId && cleanRoomId !== "") {
+        io.to(cleanRoomId).emit("execution-result", executionPayload);
+      }
 
       if (typeof callback === "function") {
         callback(executionPayload);
       }
     });
 
-    // 8. End Room Event (Purges memory & notifies everyone)
+    // 9. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -205,7 +241,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 9. Handle Disconnection & Memory Cleanup
+    // 10. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: classora-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: ALLOWED_ORIGINS
+        value: "*"

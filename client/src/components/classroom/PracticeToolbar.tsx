@@ -1,5 +1,5 @@
 import React from "react";
-import { Laptop, Sparkles } from "lucide-react";
+import { Laptop, Sparkles, Bot, Loader2 } from "lucide-react";
 import { ForkButton } from "./ForkButton";
 import { RunButton } from "./RunButton";
 
@@ -8,6 +8,8 @@ interface PracticeToolbarProps {
   onRun: () => void;
   isExecuting: boolean;
   hasExistingCode: boolean;
+  onGetHint?: () => void;
+  isRequestingHint?: boolean;
 }
 
 export const PracticeToolbar: React.FC<PracticeToolbarProps> = ({
@@ -15,6 +17,8 @@ export const PracticeToolbar: React.FC<PracticeToolbarProps> = ({
   onRun,
   isExecuting,
   hasExistingCode,
+  onGetHint,
+  isRequestingHint = false,
 }) => {
   return (
     <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-md border border-cyan-500/20 bg-gradient-to-r from-[#0E1624] to-[#121A2A]">
@@ -36,6 +40,23 @@ export const PracticeToolbar: React.FC<PracticeToolbarProps> = ({
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
+        {/* Get AI Hint Button */}
+        {onGetHint && (
+          <button
+            onClick={onGetHint}
+            disabled={isRequestingHint}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 border border-purple-400/40 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+            title="Get step-by-step guidance from OpenRouter AI Mentor"
+          >
+            {isRequestingHint ? (
+              <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
+            ) : (
+              <Bot className="w-4 h-4 text-purple-200" />
+            )}
+            <span>{isRequestingHint ? "Thinking..." : "Get AI Hint"}</span>
+          </button>
+        )}
+
         <ForkButton
           onFork={onFork}
           hasExistingCode={hasExistingCode}

@@ -2,9 +2,14 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import dotenv from "dotenv";
 import { setupSocketHandlers } from "./sockets/socketHandler.js";
 import { roomManager } from "./services/roomManager.js";
 import { executePythonCode } from "./services/executionService.js";
+import { AIService } from "./services/aiService.js";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
@@ -122,10 +127,36 @@ app.post("/api/run", async (req, res) => {
   }
 });
 
+// OpenRouter AI Hint Assistant Endpoint (Secure Express Backend Proxy)
+app.post("/api/ai/hint", async (req, res) => {
+  try {
+    const { problemTitle, problemDescription, studentCode, output, stderr, language } = req.body || {};
+
+    const result = await AIService.generateHint({
+      problemTitle,
+      problemDescription,
+      studentCode: studentCode || "",
+      output,
+      stderr,
+      language,
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    console.error(`[Express] AI hint endpoint error:`, err);
+    return res.status(500).json({
+      success: false,
+      hint: "Unable to generate AI hint due to a backend error. Please try again.",
+      error: err.toString(),
+    });
+  }
+});
+
 httpServer.listen(PORT, () => {
   console.log(`=================================`);
   console.log(`🚀 Classora Backend Server running on port ${PORT}`);
   console.log(`⚡ Socket.IO transports: ["websocket", "polling"]`);
+  console.log(`🤖 OpenRouter AI Key Configured: ${process.env.OPENROUTER_API_KEY ? "YES" : "NO"}`);
   console.log(`🔒 Allowed Origins: ${rawOrigins}`);
   console.log(`=================================`);
 });

@@ -3,7 +3,9 @@ import Editor, { OnChange } from "@monaco-editor/react";
 import { PracticeToolbar } from "./PracticeToolbar";
 import { CustomInputPanel } from "./CustomInputPanel";
 import { TerminalPanel } from "./TerminalPanel";
+import { HintPanel } from "./HintPanel";
 import { ExecutionResult } from "../../services/ExecutionService";
+import { HintResponseResult } from "../../services/AIService";
 
 interface PracticeEditorProps {
   value: string;
@@ -15,6 +17,12 @@ interface PracticeEditorProps {
   onClearTerminal: () => void;
   stdin: string;
   onChangeStdin: (newStdin: string) => void;
+  onGetHint?: () => void;
+  isRequestingHint?: boolean;
+  hintResult?: HintResponseResult | null;
+  isHintPanelOpen?: boolean;
+  onToggleHintPanel?: () => void;
+  onCloseHintPanel?: () => void;
 }
 
 export const PracticeEditor: React.FC<PracticeEditorProps> = ({
@@ -27,6 +35,12 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
   onClearTerminal,
   stdin,
   onChangeStdin,
+  onGetHint,
+  isRequestingHint = false,
+  hintResult = null,
+  isHintPanelOpen = false,
+  onToggleHintPanel = () => {},
+  onCloseHintPanel = () => {},
 }) => {
   const handleEditorChange: OnChange = (newValue) => {
     if (newValue !== undefined) {
@@ -44,6 +58,8 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
         onRun={onRun}
         isExecuting={isExecuting}
         hasExistingCode={hasExistingCode}
+        onGetHint={onGetHint}
+        isRequestingHint={isRequestingHint}
       />
 
       {/* Monaco Practice Editor */}
@@ -74,6 +90,15 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
           }}
         />
       </div>
+
+      {/* AI Mentor Hint Panel */}
+      <HintPanel
+        hintResult={hintResult}
+        isLoading={isRequestingHint}
+        isOpen={isHintPanelOpen}
+        onToggle={onToggleHintPanel}
+        onClose={onCloseHintPanel}
+      />
 
       {/* Private Custom Input (stdin) Panel */}
       <CustomInputPanel

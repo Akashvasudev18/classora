@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2 } from "lucide-react"
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
+import { requestAIHint, HintResponseResult } from "../services/AIService";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { LiveEditor } from "../components/classroom/LiveEditor";
@@ -41,6 +42,11 @@ export const StudentClassroom: React.FC = () => {
   const [practiceStdin, setPracticeStdin] = useState<string>("");
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
   const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
+
+  // OpenRouter AI Hint State
+  const [hintResult, setHintResult] = useState<HintResponseResult | null>(null);
+  const [isRequestingHint, setIsRequestingHint] = useState<boolean>(false);
+  const [isHintPanelOpen, setIsHintPanelOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -112,6 +118,8 @@ export const StudentClassroom: React.FC = () => {
       setIsPracticeEnabled(true);
       setIsSessionEnded(false);
       setPracticeCode("# Write your Python solution below\n\n");
+      setHintResult(null);
+      setIsHintPanelOpen(false);
 
       if (data.practice.exampleInput && data.practice.exampleInput !== "None") {
         setPracticeStdin(data.practice.exampleInput);
@@ -209,6 +217,25 @@ export const StudentClassroom: React.FC = () => {
     const result = await runPythonCode(practiceCode, "", practiceStdin);
     setIsPracticeExecuting(false);
     setPracticeResult(result);
+  };
+
+  const handleGetAIHint = async () => {
+    if (isRequestingHint) return;
+
+    setIsRequestingHint(true);
+    setIsHintPanelOpen(true);
+
+    const result = await requestAIHint({
+      problemTitle: activePractice?.title,
+      problemDescription: activePractice?.description,
+      studentCode: practiceCode,
+      output: practiceResult?.output,
+      stderr: practiceResult?.stderr,
+      language: "python",
+    });
+
+    setIsRequestingHint(false);
+    setHintResult(result);
   };
 
   if (status === "pending") {
@@ -385,6 +412,12 @@ export const StudentClassroom: React.FC = () => {
                     onClearTerminal={handleClearPracticeTerminal}
                     stdin={practiceStdin}
                     onChangeStdin={setPracticeStdin}
+                    onGetHint={handleGetAIHint}
+                    isRequestingHint={isRequestingHint}
+                    hintResult={hintResult}
+                    isHintPanelOpen={isHintPanelOpen}
+                    onToggleHintPanel={() => setIsHintPanelOpen((prev) => !prev)}
+                    onCloseHintPanel={() => setIsHintPanelOpen(false)}
                   />
                 </div>
               }

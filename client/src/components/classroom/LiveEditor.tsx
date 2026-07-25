@@ -3,6 +3,7 @@ import Editor, { OnChange } from "@monaco-editor/react";
 import { Code, Radio, Copy, Check } from "lucide-react";
 import { RunButton } from "./RunButton";
 import { TerminalPanel } from "./TerminalPanel";
+import { CustomInputPanel } from "./CustomInputPanel";
 import { ExecutionResult } from "../../services/ExecutionService";
 
 interface LiveEditorProps {
@@ -13,6 +14,8 @@ interface LiveEditorProps {
   isExecuting?: boolean;
   executionResult?: ExecutionResult | null;
   onClearTerminal?: () => void;
+  stdin?: string;
+  onChangeStdin?: (stdin: string) => void;
 }
 
 export const LiveEditor: React.FC<LiveEditorProps> = ({
@@ -23,6 +26,8 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
   isExecuting = false,
   executionResult = null,
   onClearTerminal,
+  stdin = "",
+  onChangeStdin,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -99,7 +104,7 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
       </div>
 
       {/* Monaco Editor Container */}
-      <div className="min-h-[380px] md:min-h-[440px] h-[440px] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl relative bg-[#1e1e1e]">
+      <div className="min-h-[360px] md:min-h-[420px] h-[420px] rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl relative bg-[#1e1e1e]">
         <Editor
           height="100%"
           defaultLanguage="python"
@@ -127,6 +132,13 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
           }}
         />
       </div>
+
+      {/* Custom Input (stdin) Panel */}
+      <CustomInputPanel
+        stdin={stdin}
+        onChange={onChangeStdin || (() => {})}
+        isHost={isHost}
+      />
 
       {/* Synchronized Terminal Panel Below Monaco Editor */}
       <TerminalPanel

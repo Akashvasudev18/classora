@@ -4,25 +4,27 @@ export interface ExecutionResult {
   stderr?: string;
   exitCode?: number;
   durationMs?: number;
+  stdin?: string;
 }
 
 const WANDBOX_API_URL = "https://wandbox.org/api/compile.json";
 const PISTON_API_URL = "https://emkc.org/api/v2/piston/execute";
 const EXECUTION_TIMEOUT_MS = 10000;
 
-export async function executePythonCode(code: string): Promise<ExecutionResult> {
+export async function executePythonCode(code: string, stdin: string = ""): Promise<ExecutionResult> {
   if (!code || code.trim() === "") {
     return {
       success: false,
       output: "Error: No Python code provided for execution.",
       stderr: "Empty code buffer.",
       exitCode: 1,
+      stdin,
     };
   }
 
   const startTime = Date.now();
 
-  // Primary Execution Engine: Wandbox API (Python 3.14 / 3.12)
+  // Primary Execution Engine: Wandbox API (Python 3.14 with stdin support)
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
@@ -35,6 +37,7 @@ export async function executePythonCode(code: string): Promise<ExecutionResult> 
       body: JSON.stringify({
         compiler: "cpython-3.14.0",
         code,
+        stdin,
       }),
       signal: controller.signal,
     });
@@ -65,13 +68,14 @@ export async function executePythonCode(code: string): Promise<ExecutionResult> 
         stderr: stderr || undefined,
         exitCode,
         durationMs,
+        stdin,
       };
     }
   } catch (err: any) {
-    console.warn(`[ExecutionService] Primary engine (Wandbox) unavailable (${err.message}). Attempting secondary engine (Piston)...`);
+    console.warn(`[ExecutionService] Wandbox engine unavailable (${err.message}). Attempting Piston engine...`);
   }
 
-  // Secondary Execution Engine Fallback: Piston API
+  // Secondary Execution Engine Fallback: Piston API (Python 3.10 with stdin support)
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
@@ -84,6 +88,7 @@ export async function executePythonCode(code: string): Promise<ExecutionResult> 
       body: JSON.stringify({
         language: "python",
         version: "3.10.0",
+        stdin,
         files: [
           {
             name: "main.py",
@@ -107,7 +112,6 @@ export async function executePythonCode(code: string): Promise<ExecutionResult> 
       const exitCode = typeof run.code === "number" ? run.code : 0;
 
       const success = exitCode === 0 && stderr.length === 0;
-
       let finalOutput = output || stdout || stderr || "Program completed with no output (Process exited with code 0).";
 
       return {
@@ -116,18 +120,20 @@ export async function executePythonCode(code: string): Promise<ExecutionResult> 
         stderr: stderr || undefined,
         exitCode,
         durationMs,
+        stdin,
       };
     }
   } catch (err: any) {
-    console.error(`[ExecutionService] Secondary engine (Piston) error:`, err);
+    console.error(`[ExecutionService] Piston engine error:`, err);
   }
 
   const durationMs = Date.now() - startTime;
   return {
     success: false,
-    output: "Execution Error: Unable to execute Python code at this time. Please check your internet connection.",
+    output: "Execution Error: Unable to execute Python code at this time. Please check network connection.",
     stderr: "Network / Engine Unreachable.",
     exitCode: 1,
     durationMs,
+    stdin,
   };
 }

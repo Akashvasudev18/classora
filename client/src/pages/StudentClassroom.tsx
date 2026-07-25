@@ -234,6 +234,7 @@ export const StudentClassroom: React.FC = () => {
             isExecuting={isExecuting}
             executionResult={executionResult}
             onClearTerminal={handleClearTerminal}
+            stdin={executionResult?.stdin || ""}
           />
         </div>
 

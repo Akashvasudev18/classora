@@ -170,12 +170,12 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 7. Code Execution Socket Event
-    socket.on("run-code", async ({ roomId, code }: { roomId: string; code: string }, callback) => {
+    // 7. Code Execution Socket Event with stdin support
+    socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
-      console.log(`[Run Code] Code execution requested for room ${cleanRoomId}`);
+      console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
 
-      const result = await executePythonCode(code);
+      const result = await executePythonCode(code, stdin || "");
 
       const executionPayload = {
         roomId: cleanRoomId,

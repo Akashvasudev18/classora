@@ -20,6 +20,7 @@ export const HostDashboard: React.FC = () => {
   const [editorContent, setEditorContent] = useState<string>(
     "# Welcome to Classora Live Python Classroom!\n# Teacher's live Python code is broadcast to all students in real-time.\n\ndef classora_session():\n    print('Learn Together. Live.')\n\nif __name__ == '__main__':\n    classora_session()\n"
   );
+  const [stdin, setStdin] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
   const [pendingStudents, setPendingStudents] = useState<Student[]>([]);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
@@ -133,7 +134,7 @@ export const HostDashboard: React.FC = () => {
     setIsExecuting(true);
     setExecutionResult(null);
 
-    const result = await runPythonCode(editorContent, currentRoomId);
+    const result = await runPythonCode(editorContent, currentRoomId, stdin);
     setIsExecuting(false);
     setExecutionResult(result);
   };
@@ -254,7 +255,7 @@ export const HostDashboard: React.FC = () => {
             />
           </div>
 
-          {/* Left 2 Columns: Live Textarea / Monaco Editor + Terminal Output */}
+          {/* Left 2 Columns: Live Textarea / Monaco Editor + Custom Input + Terminal Output */}
           <div className="lg:col-span-2 flex flex-col space-y-4">
             <LiveEditor
               value={editorContent}
@@ -264,6 +265,8 @@ export const HostDashboard: React.FC = () => {
               isExecuting={isExecuting}
               executionResult={executionResult}
               onClearTerminal={handleClearTerminal}
+              stdin={stdin}
+              onChangeStdin={setStdin}
             />
           </div>
         </div>

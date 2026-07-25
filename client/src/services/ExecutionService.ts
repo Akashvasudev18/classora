@@ -8,9 +8,10 @@ export interface ExecutionResult {
   exitCode?: number;
   durationMs?: number;
   timestamp?: string;
+  stdin?: string;
 }
 
-export async function runPythonCode(code: string, roomId: string): Promise<ExecutionResult> {
+export async function runPythonCode(code: string, roomId: string, stdin: string = ""): Promise<ExecutionResult> {
   const cleanRoomId = roomId.toUpperCase();
   const targetServerUrl = socketService.getCurrentUrl();
   const endpoint = `${targetServerUrl.replace(/\/$/, "")}/api/run`;
@@ -20,7 +21,7 @@ export async function runPythonCode(code: string, roomId: string): Promise<Execu
 
     // 1. Try Socket.IO emit first (bypasses CORS & HTTP 404 proxy issues on Render)
     if (socketService.getSocket().connected) {
-      socketService.emit("run-code", { roomId: cleanRoomId, code }, (res: ExecutionResult) => {
+      socketService.emit("run-code", { roomId: cleanRoomId, code, stdin }, (res: ExecutionResult) => {
         if (res && !hasResolved) {
           hasResolved = true;
           resolve(formatExecutionOutput(res));
@@ -36,6 +37,7 @@ export async function runPythonCode(code: string, roomId: string): Promise<Execu
       },
       body: JSON.stringify({
         code,
+        stdin,
         roomId: cleanRoomId,
       }),
     })
@@ -59,6 +61,7 @@ export async function runPythonCode(code: string, roomId: string): Promise<Execu
           output: "Execution Error: Code execution timed out or server is restarting. Please try clicking Run Code again.",
           stderr: "Timeout Limit Exceeded.",
           exitCode: 124,
+          stdin,
         });
       }
     }, 12000);
@@ -70,7 +73,7 @@ function formatExecutionOutput(res: ExecutionResult): ExecutionResult {
     return {
       ...res,
       success: false,
-      output: `${res.output}\n\n💡 Tip: Python input() expects standard input (stdin). For live web execution, define variables directly (e.g. name = "Alex", age = 20) instead of calling input().`,
+      output: `${res.output}\n\n💡 Tip: Python input() reached End-Of-File. Enter your input values in the "Custom Input (stdin)" box above before clicking Run Code!`,
     };
   }
   return res;

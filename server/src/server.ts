@@ -14,13 +14,9 @@ const rawOrigins = process.env.ALLOWED_ORIGINS || "*";
 const allowedOriginsList = rawOrigins.split(",").map((o) => o.trim()).filter(Boolean);
 
 const checkOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-  // Allow requests with no origin (like mobile apps, curl, server-to-server)
   if (!origin) return callback(null, true);
-
-  // If wildcard * is present, allow all
   if (allowedOriginsList.includes("*")) return callback(null, true);
 
-  // Check exact matches or wildcard pattern matches (e.g., *.trycloudflare.com or *.vercel.app)
   const isAllowed = allowedOriginsList.some((allowed) => {
     if (allowed === origin) return true;
     if (allowed.includes("*")) {
@@ -33,7 +29,6 @@ const checkOrigin = (origin: string | undefined, callback: (err: Error | null, a
   if (isAllowed) {
     callback(null, true);
   } else {
-    // Default to allowing for smooth development & tunnel access
     callback(null, true);
   }
 };
@@ -82,10 +77,10 @@ app.get("/api/rooms", (_req, res) => {
   });
 });
 
-// Code Execution Endpoint (Piston Proxy + Socket Broadcast)
+// Code Execution Endpoint (Supports code & optional stdin)
 app.post("/api/run", async (req, res) => {
   try {
-    const { code, roomId } = req.body || {};
+    const { code, stdin, roomId } = req.body || {};
 
     if (!code || typeof code !== "string" || code.trim() === "") {
       return res.status(400).json({
@@ -96,9 +91,9 @@ app.post("/api/run", async (req, res) => {
       });
     }
 
-    const result = await executePythonCode(code);
+    const result = await executePythonCode(code, typeof stdin === "string" ? stdin : "");
 
-    // If roomId is provided, broadcast the execution result to all connected students in real time
+    // Broadcast execution result to all connected students if roomId is provided
     if (roomId && typeof roomId === "string") {
       const cleanRoomId = roomId.toUpperCase();
       io.to(cleanRoomId).emit("execution-result", {
@@ -114,6 +109,7 @@ app.post("/api/run", async (req, res) => {
       stderr: result.stderr,
       exitCode: result.exitCode,
       durationMs: result.durationMs,
+      stdin: result.stdin,
     });
   } catch (err: any) {
     console.error(`[Express] Code execution endpoint error:`, err);

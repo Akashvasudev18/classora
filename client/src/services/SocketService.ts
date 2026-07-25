@@ -7,9 +7,10 @@ type StatusListener = (status: ConnectionStatus) => void;
 export const RENDER_BACKEND_URL = "https://classora-3s1d.onrender.com";
 
 export function resolveTargetSocketUrl(): string {
-  // 1. If running locally on localhost dev server, default to local port 5000
   if (typeof window !== "undefined" && window.location) {
     const hostname = window.location.hostname;
+
+    // 1. Localhost development environment
     if (hostname === "localhost" || hostname === "127.0.0.1") {
       const saved = localStorage.getItem("classora_socket_url");
       if (saved && saved.trim() !== "") {
@@ -17,17 +18,28 @@ export function resolveTargetSocketUrl(): string {
       }
       return "http://localhost:5000";
     }
-  }
 
-  // 2. Check manual override from localStorage if user picked custom server
-  if (typeof window !== "undefined") {
+    // 2. Production / Public Web (Vercel, Mobile Browsers)
+    // Automatically purge old stale localhost or tunnel URLs from localStorage
     const saved = localStorage.getItem("classora_socket_url");
     if (saved && saved.trim() !== "") {
-      return saved.trim().replace(/\/$/, "");
+      const cleanSaved = saved.trim().replace(/\/$/, "");
+      if (
+        cleanSaved.includes("localhost") ||
+        cleanSaved.includes("127.0.0.1") ||
+        cleanSaved.includes("trycloudflare") ||
+        cleanSaved.includes("serveo") ||
+        cleanSaved.includes("loca.lt")
+      ) {
+        console.warn(`[SocketService] Clearing stale legacy socket URL "${cleanSaved}" from localStorage`);
+        localStorage.removeItem("classora_socket_url");
+      } else {
+        return cleanSaved;
+      }
     }
   }
 
-  // 3. For ALL public Vercel & mobile visitors worldwide, default to Render Cloud Backend!
+  // 3. Guaranteed Production Fallback to Live Render Backend
   return RENDER_BACKEND_URL;
 }
 

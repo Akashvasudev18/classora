@@ -1,16 +1,20 @@
-import React from "react";
-import { BookOpen, Clock, Tag, ArrowRight, CornerDownLeft } from "lucide-react";
+import React, { useState } from "react";
+import { BookOpen, Clock, CornerDownLeft, Code2, ChevronDown, ChevronUp } from "lucide-react";
 import { PracticeProblem } from "../../shared/problems";
 
 interface ProblemPanelProps {
   problem: PracticeProblem;
   onUseExampleInput?: (input: string) => void;
+  isSessionEnded?: boolean;
 }
 
 export const ProblemPanel: React.FC<ProblemPanelProps> = ({
   problem,
   onUseExampleInput,
+  isSessionEnded = false,
 }) => {
+  const [showSolution, setShowSolution] = useState<boolean>(false);
+
   const getDifficultyBadge = (diff: string) => {
     switch (diff) {
       case "Easy":
@@ -44,15 +48,34 @@ export const ProblemPanel: React.FC<ProblemPanelProps> = ({
               >
                 {problem.difficulty}
               </span>
+              {isSessionEnded && (
+                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-bold">
+                  SESSION ENDED
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400">Assigned Practice Problem</p>
           </div>
         </div>
 
-        {/* Estimated Time Badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 font-mono">
-          <Clock className="w-4 h-4 text-cyan-400" />
-          <span>Est. Time: {problem.estimatedTime || "5 mins"}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Estimated Time Badge */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 font-mono">
+            <Clock className="w-4 h-4 text-cyan-400" />
+            <span>Est. Time: {problem.estimatedTime || "5 mins"}</span>
+          </div>
+
+          {/* View Reference Solution Toggle */}
+          {problem.starterCode && (
+            <button
+              onClick={() => setShowSolution((prev) => !prev)}
+              className="px-3 py-1.5 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              <span>{showSolution ? "Hide Solution" : "View Reference Solution"}</span>
+              {showSolution ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -95,6 +118,21 @@ export const ProblemPanel: React.FC<ProblemPanelProps> = ({
               </pre>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Collapsible Reference Solution Panel */}
+      {showSolution && problem.starterCode && (
+        <div className="pt-2 animate-fadeIn">
+          <div className="p-3.5 rounded-xl bg-[#090D16] border border-cyan-500/40 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-cyan-300 font-mono">
+              <span>REFERENCE SOLUTION</span>
+              <span className="text-[10px] text-slate-500">Python 3</span>
+            </div>
+            <pre className="text-xs font-mono text-cyan-200 bg-[#060911] p-3 rounded-lg border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+              {problem.starterCode}
+            </pre>
+          </div>
         </div>
       )}
     </div>

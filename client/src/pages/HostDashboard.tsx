@@ -9,6 +9,7 @@ import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPa
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { LiveEditor } from "../components/classroom/LiveEditor";
 import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
+import { StudentCodeModal } from "../components/classroom/StudentCodeModal";
 import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
@@ -31,6 +32,11 @@ export const HostDashboard: React.FC = () => {
   // Practice Session State for Host
   const [isPracticeModalOpen, setIsPracticeModalOpen] = useState<boolean>(false);
   const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
+
+  // Student Inspection State for Host
+  const [inspectedStudent, setInspectedStudent] = useState<Student | null>(null);
+  const [inspectedStudentCode, setInspectedStudentCode] = useState<string>("");
+  const [isInspectionLoading, setIsInspectionLoading] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -103,11 +109,18 @@ export const HostDashboard: React.FC = () => {
       setExecutionResult(data);
     };
 
+    const handleReceiveStudentCode = (data: { studentId: string; studentName: string; code: string }) => {
+      console.log(`[Host] Received code from student "${data.studentName}"`);
+      setIsInspectionLoading(false);
+      setInspectedStudentCode(data.code);
+    };
+
     realtimeBus.on("join-request", handleJoinRequest);
     realtimeBus.on("update-pending", handleUpdatePending);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
     realtimeBus.on("execution-result", handleExecutionResult);
+    realtimeBus.on("receive-student-code", handleReceiveStudentCode);
 
     return () => {
       clearInterval(heartbeatInterval);
@@ -117,6 +130,7 @@ export const HostDashboard: React.FC = () => {
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
       realtimeBus.off("execution-result", handleExecutionResult);
+      realtimeBus.off("receive-student-code", handleReceiveStudentCode);
     };
   }, [currentRoomId]);
 
@@ -166,6 +180,27 @@ export const HostDashboard: React.FC = () => {
       setActivePractice(null);
       realtimeBus.emit("end-practice", { roomId: currentRoomId });
     }
+  };
+
+  // Student Inspection Handlers
+  const handleInspectStudent = (student: Student) => {
+    setInspectedStudent(student);
+    setInspectedStudentCode("# Requesting latest code from student...\n");
+    setIsInspectionLoading(true);
+
+    realtimeBus.emit("request-student-code", {
+      roomId: currentRoomId,
+      studentId: student.id,
+    });
+  };
+
+  const handleRefreshStudentInspection = () => {
+    if (!inspectedStudent) return;
+    setIsInspectionLoading(true);
+    realtimeBus.emit("request-student-code", {
+      roomId: currentRoomId,
+      studentId: inspectedStudent.id,
+    });
   };
 
   const handleEndClass = () => {
@@ -302,6 +337,7 @@ export const HostDashboard: React.FC = () => {
               students={students}
               roomCode={currentRoomId}
               isHost={true}
+              onSelectStudent={handleInspectStudent}
             />
           </div>
 
@@ -327,6 +363,16 @@ export const HostDashboard: React.FC = () => {
         isOpen={isPracticeModalOpen}
         onClose={() => setIsPracticeModalOpen(false)}
         onStartSession={handleStartPracticeSession}
+      />
+
+      {/* Teacher Student Code Inspection Modal */}
+      <StudentCodeModal
+        isOpen={!!inspectedStudent}
+        onClose={() => setInspectedStudent(null)}
+        student={inspectedStudent}
+        code={inspectedStudentCode}
+        onRefresh={handleRefreshStudentInspection}
+        isLoading={isInspectionLoading}
       />
     </div>
   );

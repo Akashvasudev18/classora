@@ -34,8 +34,9 @@ export const StudentClassroom: React.FC = () => {
   // Practice Session & Practice IDE State for Student
   const [isPracticeEnabled, setIsPracticeEnabled] = useState<boolean>(false);
   const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
+  const [isSessionEnded, setIsSessionEnded] = useState<boolean>(false);
   const [practiceCode, setPracticeCode] = useState<string>(
-    "# Student Practice Workspace\n# Write and test your own Python code here.\n\ndef practice():\n    print('My local Python practice workspace')\n\npractice()\n"
+    "# Write your Python solution below\n\n"
   );
   const [practiceStdin, setPracticeStdin] = useState<string>("");
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
@@ -73,9 +74,8 @@ export const StudentClassroom: React.FC = () => {
       if (data.activePractice) {
         setActivePractice(data.activePractice);
         setIsPracticeEnabled(true);
-        if (data.activePractice.starterCode) {
-          setPracticeCode(data.activePractice.starterCode);
-        }
+        setIsSessionEnded(false);
+        setPracticeCode("# Write your Python solution below\n\n");
         if (data.activePractice.exampleInput && data.activePractice.exampleInput !== "None") {
           setPracticeStdin(data.activePractice.exampleInput);
         }
@@ -104,16 +104,15 @@ export const StudentClassroom: React.FC = () => {
       setExecutionResult(data);
     };
 
-    // Practice Session Listener (Auto-opens practice mode & loads problem)
+    // Practice Session Listener (Auto-opens practice mode & clears code to BLANK)
     const handlePracticeStarted = (data: { practice: PracticeProblem; roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       console.log("[StudentClassroom] Practice Session Started:", data.practice.title);
       setActivePractice(data.practice);
       setIsPracticeEnabled(true);
+      setIsSessionEnded(false);
+      setPracticeCode("# Write your Python solution below\n\n");
 
-      if (data.practice.starterCode) {
-        setPracticeCode(data.practice.starterCode);
-      }
       if (data.practice.exampleInput && data.practice.exampleInput !== "None") {
         setPracticeStdin(data.practice.exampleInput);
       }
@@ -122,7 +121,18 @@ export const StudentClassroom: React.FC = () => {
     const handlePracticeEnded = (data: { roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       console.log("[StudentClassroom] Practice Session Ended");
-      setActivePractice(null);
+      setIsSessionEnded(true);
+    };
+
+    // Teacher Student Code Inspection Listener
+    const handleTeacherRequestCode = (data: { teacherSocketId: string }) => {
+      console.log("[StudentClassroom] Teacher requested my practice code. Replying...");
+      realtimeBus.emit("send-student-code", {
+        teacherSocketId: data.teacherSocketId,
+        studentId,
+        studentName,
+        code: practiceCode,
+      });
     };
 
     const handleRoomEnded = (data: { roomId?: string }) => {
@@ -146,6 +156,7 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("practice-started", handlePracticeStarted);
     realtimeBus.on("receive-practice", handlePracticeStarted);
     realtimeBus.on("practice-ended", handlePracticeEnded);
+    realtimeBus.on("request-student-code", handleTeacherRequestCode);
     realtimeBus.on("room-ended", handleRoomEnded);
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
@@ -160,10 +171,11 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("practice-started", handlePracticeStarted);
       realtimeBus.off("receive-practice", handlePracticeStarted);
       realtimeBus.off("practice-ended", handlePracticeEnded);
+      realtimeBus.off("request-student-code", handleTeacherRequestCode);
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
-  }, [currentRoomId, studentId, studentName, navigate]);
+  }, [currentRoomId, studentId, studentName, practiceCode, navigate]);
 
   const handleClearTeacherTerminal = () => {
     setExecutionResult(null);
@@ -347,6 +359,7 @@ export const StudentClassroom: React.FC = () => {
                     <ProblemPanel
                       problem={activePractice}
                       onUseExampleInput={(input) => setPracticeStdin(input)}
+                      isSessionEnded={isSessionEnded}
                     />
                   )}
 

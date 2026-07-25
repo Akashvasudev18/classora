@@ -204,7 +204,33 @@ export const setupSocketHandlers = (io: Server) => {
       io.to(cleanRoomId).emit("practice-ended", payload);
     });
 
-    // 8. Code Execution Socket Event with stdin support
+    // 8. Teacher Student Code Inspection Events
+    socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+      if (!room) return;
+
+      const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId);
+      if (targetStudent) {
+        console.log(`[Inspection] Teacher requesting code from student "${targetStudent.name}" (${studentId})`);
+        io.to(targetStudent.socketId).emit("request-student-code", {
+          teacherSocketId: socket.id,
+          studentId: targetStudent.id,
+        });
+      }
+    });
+
+    socket.on("send-student-code", ({ teacherSocketId, studentId, studentName, code }: { teacherSocketId: string; studentId: string; studentName: string; code: string }) => {
+      console.log(`[Inspection] Received code from student "${studentName}". Relaying to teacher ${teacherSocketId}`);
+      io.to(teacherSocketId).emit("receive-student-code", {
+        studentId,
+        studentName,
+        code,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // 9. Code Execution Socket Event with stdin support
     socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
@@ -227,7 +253,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 9. End Room Event (Purges memory & notifies everyone)
+    // 10. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -241,7 +267,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 10. Handle Disconnection & Memory Cleanup
+    // 11. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);

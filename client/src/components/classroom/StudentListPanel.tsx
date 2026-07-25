@@ -1,5 +1,5 @@
 import React from "react";
-import { Users, Sparkles } from "lucide-react";
+import { Users, Sparkles, Eye } from "lucide-react";
 import { Avatar } from "../common/Avatar";
 import { Student } from "./WaitingRoomPanel";
 
@@ -8,6 +8,7 @@ interface StudentListPanelProps {
   currentStudentName?: string;
   roomCode: string;
   isHost?: boolean;
+  onSelectStudent?: (student: Student) => void;
 }
 
 export const StudentListPanel: React.FC<StudentListPanelProps> = ({
@@ -15,6 +16,7 @@ export const StudentListPanel: React.FC<StudentListPanelProps> = ({
   currentStudentName,
   roomCode,
   isHost = false,
+  onSelectStudent,
 }) => {
   return (
     <div className="glass-panel rounded-2xl p-5 border border-slate-800 flex-1 flex flex-col shadow-lg">
@@ -45,11 +47,17 @@ export const StudentListPanel: React.FC<StudentListPanelProps> = ({
             return (
               <div
                 key={student.id}
-                className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                onClick={() => isHost && onSelectStudent && onSelectStudent(student)}
+                className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${
                   isMe
                     ? "bg-indigo-950/40 border-indigo-500/30"
                     : "bg-slate-900/80 border-slate-800/80"
+                } ${
+                  isHost
+                    ? "hover:bg-slate-800 hover:border-cyan-500/40 cursor-pointer"
+                    : ""
                 }`}
+                title={isHost ? `Click to inspect ${student.name}'s practice code` : ""}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <Avatar
@@ -57,13 +65,26 @@ export const StudentListPanel: React.FC<StudentListPanelProps> = ({
                     variant={isMe ? "indigo" : "blue"}
                     size="sm"
                   />
-                  <span className="text-xs font-semibold text-slate-200 truncate">
-                    {student.name} {isMe ? "(You)" : ""}
-                  </span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-semibold text-slate-200 truncate">
+                      {student.name} {isMe ? "(You)" : ""}
+                    </span>
+                    {isHost && (
+                      <span className="text-[10px] text-cyan-400 hidden group-hover:block transition-all">
+                        Click to inspect code
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Online</span>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {isHost && (
+                    <Eye className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                  )}
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Online</span>
+                  </div>
                 </div>
               </div>
             );

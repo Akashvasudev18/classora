@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus, Server } from "lucide-react";
+import { ArrowLeft, Copy, Check, Shield, LogOut, Users, UserPlus } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { StatusBadge } from "../components/common/StatusBadge";
-import { ServerModal } from "../components/common/ServerModal";
 import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPanel";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { LiveEditor } from "../components/classroom/LiveEditor";
@@ -12,12 +11,11 @@ import { LiveEditor } from "../components/classroom/LiveEditor";
 export const HostDashboard: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
   const navigate = useNavigate();
-  const { isConnected } = useSocketStatus();
+  const { status, isConnected } = useSocketStatus();
 
   const currentRoomId = (roomCode || "").toUpperCase();
 
   const [copied, setCopied] = useState(false);
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [editorContent, setEditorContent] = useState<string>(
     "# Welcome to Classora Live Python Classroom!\n# Teacher's live Python code is broadcast to all students in real-time.\n\ndef classora_session():\n    print('Learn Together. Live.')\n\nif __name__ == '__main__':\n    classora_session()\n"
   );
@@ -129,8 +127,6 @@ export const HostDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans">
-      <ServerModal isOpen={isServerModalOpen} onClose={() => setIsServerModalOpen(false)} />
-
       {/* Top Navigation */}
       <header className="px-4 md:px-6 py-3.5 border-b border-slate-800/80 bg-[#111621]/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shadow-lg">
         <div className="flex items-center gap-3">
@@ -178,16 +174,7 @@ export const HostDashboard: React.FC = () => {
             <span>{students.length} Connected</span>
           </div>
 
-          {/* Server Config Button */}
-          <button
-            onClick={() => setIsServerModalOpen(true)}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
-            title="Configure Server Network URL"
-          >
-            <Server className="w-4 h-4 text-indigo-400" />
-          </button>
-
-          <StatusBadge isConnected={isConnected} label={isConnected ? "Online" : "Connected"} />
+          <StatusBadge status={status} isConnected={isConnected} />
 
           {/* End Class Button */}
           <button

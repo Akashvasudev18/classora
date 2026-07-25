@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Users, LogOut, Shield, Server } from "lucide-react";
+import { ArrowLeft, BookOpen, Users, LogOut, Shield } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
-import { ServerModal } from "../components/common/ServerModal";
 import { LiveEditor } from "../components/classroom/LiveEditor";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { Student } from "../components/classroom/WaitingRoomPanel";
@@ -14,7 +13,7 @@ export const StudentClassroom: React.FC = () => {
   const { roomCode } = useParams<{ roomCode: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { isConnected } = useSocketStatus();
+  const { status: socketConnectionStatus, isConnected } = useSocketStatus();
 
   const currentRoomId = (roomCode || "").toUpperCase();
   const studentName = (location.state as { studentName?: string })?.studentName || "Student";
@@ -24,7 +23,6 @@ export const StudentClassroom: React.FC = () => {
   const [rejectionReason, setRejectionReason] = useState<string>("");
   const [editorContent, setEditorContent] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
 
   useEffect(() => {
     if (!currentRoomId) return;
@@ -120,8 +118,6 @@ export const StudentClassroom: React.FC = () => {
   if (status === "pending") {
     return (
       <div className="relative min-h-screen bg-[#0B0E14] bg-grid-pattern flex flex-col justify-between overflow-hidden">
-        <ServerModal isOpen={isServerModalOpen} onClose={() => setIsServerModalOpen(false)} />
-
         <header className="px-6 py-6 max-w-7xl mx-auto w-full flex items-center justify-between">
           <button
             onClick={() => navigate("/join")}
@@ -130,16 +126,7 @@ export const StudentClassroom: React.FC = () => {
             <ArrowLeft className="w-4 h-4" />
             <span>Cancel Request</span>
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsServerModalOpen(true)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
-              title="Configure Server Network URL"
-            >
-              <Server className="w-4 h-4 text-indigo-400" />
-            </button>
-            <StatusBadge isConnected={isConnected} label={isConnected ? "Connected" : "Connected"} />
-          </div>
+          <StatusBadge status={socketConnectionStatus} isConnected={isConnected} />
         </header>
 
         <main className="max-w-md mx-auto w-full px-6 py-12 flex-1 flex flex-col justify-center text-center z-10">
@@ -184,8 +171,6 @@ export const StudentClassroom: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans">
-      <ServerModal isOpen={isServerModalOpen} onClose={() => setIsServerModalOpen(false)} />
-
       {/* Top Navigation */}
       <header className="px-4 md:px-6 py-3.5 border-b border-slate-800/80 bg-[#111621]/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shadow-lg">
         <div className="flex items-center gap-3">
@@ -225,15 +210,7 @@ export const StudentClassroom: React.FC = () => {
             <span>{students.length} Connected</span>
           </div>
 
-          <button
-            onClick={() => setIsServerModalOpen(true)}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
-            title="Configure Server Network URL"
-          >
-            <Server className="w-4 h-4 text-indigo-400" />
-          </button>
-
-          <StatusBadge isConnected={isConnected} label={isConnected ? "Live Connected" : "Connected"} />
+          <StatusBadge status={socketConnectionStatus} isConnected={isConnected} />
 
           <button
             onClick={() => navigate("/")}

@@ -33,9 +33,10 @@ export const HostDashboard: React.FC = () => {
   const [isPracticeModalOpen, setIsPracticeModalOpen] = useState<boolean>(false);
   const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
 
-  // Student Inspection State for Host
+  // Student Inspection & Editing State for Host
   const [inspectedStudent, setInspectedStudent] = useState<Student | null>(null);
   const [inspectedStudentCode, setInspectedStudentCode] = useState<string>("");
+  const [inspectedStudentTerminal, setInspectedStudentTerminal] = useState<ExecutionResult | null>(null);
   const [isInspectionLoading, setIsInspectionLoading] = useState<boolean>(false);
 
   useEffect(() => {
@@ -109,10 +110,11 @@ export const HostDashboard: React.FC = () => {
       setExecutionResult(data);
     };
 
-    const handleReceiveStudentCode = (data: { studentId: string; studentName: string; code: string }) => {
-      console.log(`[Host] Received code from student "${data.studentName}"`);
+    const handleReceiveStudentCode = (data: { studentId: string; studentName: string; code: string; terminalResult?: ExecutionResult }) => {
+      console.log(`[Host] Received code & terminal from student "${data.studentName}"`);
       setIsInspectionLoading(false);
       setInspectedStudentCode(data.code);
+      setInspectedStudentTerminal(data.terminalResult || null);
     };
 
     realtimeBus.on("join-request", handleJoinRequest);
@@ -182,10 +184,11 @@ export const HostDashboard: React.FC = () => {
     }
   };
 
-  // Student Inspection Handlers
+  // Student Inspection & Remote Assistance Handlers
   const handleInspectStudent = (student: Student) => {
     setInspectedStudent(student);
     setInspectedStudentCode("# Requesting latest code from student...\n");
+    setInspectedStudentTerminal(null);
     setIsInspectionLoading(true);
 
     realtimeBus.emit("request-student-code", {
@@ -200,6 +203,16 @@ export const HostDashboard: React.FC = () => {
     realtimeBus.emit("request-student-code", {
       roomId: currentRoomId,
       studentId: inspectedStudent.id,
+    });
+  };
+
+  const handlePushEditToStudent = (newCode: string) => {
+    if (!inspectedStudent) return;
+    console.log(`[Host] Pushing code edit to student "${inspectedStudent.name}"`);
+    realtimeBus.emit("teacher-edit-student-code", {
+      roomId: currentRoomId,
+      studentId: inspectedStudent.id,
+      code: newCode,
     });
   };
 
@@ -365,13 +378,15 @@ export const HostDashboard: React.FC = () => {
         onStartSession={handleStartPracticeSession}
       />
 
-      {/* Teacher Student Code Inspection Modal */}
+      {/* Teacher Student Code Inspection & Live Remote Assistance Modal */}
       <StudentCodeModal
         isOpen={!!inspectedStudent}
         onClose={() => setInspectedStudent(null)}
         student={inspectedStudent}
         code={inspectedStudentCode}
+        terminalResult={inspectedStudentTerminal}
         onRefresh={handleRefreshStudentInspection}
+        onPushEdit={handlePushEditToStudent}
         isLoading={isInspectionLoading}
       />
     </div>

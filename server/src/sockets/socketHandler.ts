@@ -204,7 +204,7 @@ export const setupSocketHandlers = (io: Server) => {
       io.to(cleanRoomId).emit("practice-ended", payload);
     });
 
-    // 8. Teacher Student Code Inspection Events
+    // 8. Teacher Student Code Inspection & Live Assistance Events
     socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       const room = roomManager.getRoom(cleanRoomId);
@@ -212,7 +212,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId);
       if (targetStudent) {
-        console.log(`[Inspection] Teacher requesting code from student "${targetStudent.name}" (${studentId})`);
+        console.log(`[Inspection] Teacher requesting code & terminal from student "${targetStudent.name}" (${studentId})`);
         io.to(targetStudent.socketId).emit("request-student-code", {
           teacherSocketId: socket.id,
           studentId: targetStudent.id,
@@ -220,14 +220,31 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    socket.on("send-student-code", ({ teacherSocketId, studentId, studentName, code }: { teacherSocketId: string; studentId: string; studentName: string; code: string }) => {
-      console.log(`[Inspection] Received code from student "${studentName}". Relaying to teacher ${teacherSocketId}`);
+    socket.on("send-student-code", ({ teacherSocketId, studentId, studentName, code, terminalResult }: { teacherSocketId: string; studentId: string; studentName: string; code: string; terminalResult?: any }) => {
+      console.log(`[Inspection] Received code & terminal from student "${studentName}". Relaying to teacher ${teacherSocketId}`);
       io.to(teacherSocketId).emit("receive-student-code", {
         studentId,
         studentName,
         code,
+        terminalResult,
         timestamp: new Date().toISOString(),
       });
+    });
+
+    // Teacher pushes code edit directly to student
+    socket.on("teacher-edit-student-code", ({ roomId, studentId, code }: { roomId: string; studentId: string; code: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+      if (!room) return;
+
+      const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId);
+      if (targetStudent) {
+        console.log(`[Teacher Assistance] Teacher pushing code edit to student "${targetStudent.name}" (${studentId})`);
+        io.to(targetStudent.socketId).emit("teacher-edited-code", {
+          code,
+          timestamp: new Date().toISOString(),
+        });
+      }
     });
 
     // 9. Code Execution Socket Event with stdin support

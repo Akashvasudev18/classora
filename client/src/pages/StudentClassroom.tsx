@@ -124,15 +124,24 @@ export const StudentClassroom: React.FC = () => {
       setIsSessionEnded(true);
     };
 
-    // Teacher Student Code Inspection Listener
+    // Teacher Student Code & Terminal Inspection Listener
     const handleTeacherRequestCode = (data: { teacherSocketId: string }) => {
-      console.log("[StudentClassroom] Teacher requested my practice code. Replying...");
+      console.log("[StudentClassroom] Teacher requested my practice code & terminal output. Replying...");
       realtimeBus.emit("send-student-code", {
         teacherSocketId: data.teacherSocketId,
         studentId,
         studentName,
         code: practiceCode,
+        terminalResult: practiceResult,
       });
+    };
+
+    // Teacher Live Code Fix Push Listener
+    const handleTeacherEditedMyCode = (data: { code: string }) => {
+      console.log("[StudentClassroom] Teacher pushed a live code fix to my editor!");
+      if (data.code !== undefined) {
+        setPracticeCode(data.code);
+      }
     };
 
     const handleRoomEnded = (data: { roomId?: string }) => {
@@ -157,6 +166,7 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("receive-practice", handlePracticeStarted);
     realtimeBus.on("practice-ended", handlePracticeEnded);
     realtimeBus.on("request-student-code", handleTeacherRequestCode);
+    realtimeBus.on("teacher-edited-code", handleTeacherEditedMyCode);
     realtimeBus.on("room-ended", handleRoomEnded);
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
@@ -172,10 +182,11 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("receive-practice", handlePracticeStarted);
       realtimeBus.off("practice-ended", handlePracticeEnded);
       realtimeBus.off("request-student-code", handleTeacherRequestCode);
+      realtimeBus.off("teacher-edited-code", handleTeacherEditedMyCode);
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
-  }, [currentRoomId, studentId, studentName, practiceCode, navigate]);
+  }, [currentRoomId, studentId, studentName, practiceCode, practiceResult, navigate]);
 
   const handleClearTeacherTerminal = () => {
     setExecutionResult(null);

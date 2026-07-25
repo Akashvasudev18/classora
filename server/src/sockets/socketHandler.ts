@@ -37,6 +37,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       // Broadcast updated pending & student lists to host room
       io.to(roomId).emit("update-pending", {
+        roomId,
         pendingStudents: room.pendingStudents,
       });
 
@@ -47,16 +48,24 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 2. Room Check Event
+    // 2. Room Check & State Fetch Event
     socket.on("check-room", ({ roomId }: { roomId: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
-      const exists = roomManager.roomExists(cleanRoomId);
+      const room = roomManager.getRoom(cleanRoomId);
       if (typeof callback === "function") {
-        callback({ exists, roomId: cleanRoomId });
+        callback({ exists: !!room, roomId: cleanRoomId, roomState: room || null });
       }
     });
 
-    // 3. Student Join Request Event (Preserves request even if host mounts concurrently)
+    socket.on("get-room-state", ({ roomId }: { roomId: string }, callback) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+      if (typeof callback === "function") {
+        callback({ success: true, roomId: cleanRoomId, roomState: room || null });
+      }
+    });
+
+    // 3. Student Join Request Event
     socket.on("join-request", ({ roomId, studentId, name }: { roomId: string; studentId: string; name: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       let room = roomManager.getRoom(cleanRoomId);
@@ -72,21 +81,21 @@ export const setupSocketHandlers = (io: Server) => {
 
       console.log(`[Join Request] Student "${student.name}" (${student.id}) joined waiting room for ${cleanRoomId}`);
 
-      // Broadcast join request to room (host socket room)
-      io.to(cleanRoomId).emit("join-request", {
+      const payload = {
+        roomId: cleanRoomId,
         student,
         pendingStudents: room.pendingStudents,
-      });
+      };
+
+      // Broadcast join request to all sockets in room (host and waiting students)
+      io.to(cleanRoomId).emit("join-request", payload);
 
       if (room.teacherSocket && room.teacherSocket !== socket.id) {
-        io.to(room.teacherSocket).emit("join-request", {
-          student,
-          pendingStudents: room.pendingStudents,
-        });
+        io.to(room.teacherSocket).emit("join-request", payload);
       }
 
       if (typeof callback === "function") {
-        callback({ success: true, status: "pending", studentId: student.id });
+        callback({ success: true, status: "pending", studentId: student.id, roomState: room });
       }
     });
 
@@ -106,6 +115,7 @@ export const setupSocketHandlers = (io: Server) => {
         });
 
         io.to(cleanRoomId).emit("student-connected", {
+          roomId: cleanRoomId,
           students: room.students,
           pendingStudents: room.pendingStudents,
           count: room.students.length,
@@ -129,6 +139,7 @@ export const setupSocketHandlers = (io: Server) => {
         });
 
         io.to(cleanRoomId).emit("update-pending", {
+          roomId: cleanRoomId,
           pendingStudents: room.pendingStudents,
         });
       }
@@ -144,6 +155,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       // Broadcast to all other sockets in room
       socket.to(cleanRoomId).emit("editor-update", {
+        roomId: cleanRoomId,
         content,
         updatedAt: new Date().toISOString(),
       });
@@ -155,6 +167,7 @@ export const setupSocketHandlers = (io: Server) => {
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
 
       io.to(cleanRoomId).emit("room-ended", {
+        roomId: cleanRoomId,
         message: "The teacher has ended this classroom session.",
       });
 
@@ -177,6 +190,7 @@ export const setupSocketHandlers = (io: Server) => {
           const room = roomManager.getRoom(info.roomId);
           if (room) {
             io.to(info.roomId).emit("student-disconnected", {
+              roomId: info.roomId,
               socketId: socket.id,
               studentName: info.studentName,
               students: room.students,

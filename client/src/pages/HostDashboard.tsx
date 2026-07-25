@@ -40,6 +40,18 @@ export const HostDashboard: React.FC = () => {
     claimHostRoom();
     socket.on("connect", claimHostRoom);
 
+    // 2-second heartbeat poll to ensure host state is 100% synced with Render server
+    const heartbeatInterval = setInterval(() => {
+      if (socket.connected) {
+        socket.emit("get-room-state", { roomId: currentRoomId }, (res: any) => {
+          if (res && res.roomState) {
+            setPendingStudents([...(res.roomState.pendingStudents || [])]);
+            setStudents([...(res.roomState.students || [])]);
+          }
+        });
+      }
+    }, 2000);
+
     const handleJoinRequest = (data: any) => {
       if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       if (data?.pendingStudents) {
@@ -75,6 +87,7 @@ export const HostDashboard: React.FC = () => {
     realtimeBus.on("student-disconnected", handleStudentConnected);
 
     return () => {
+      clearInterval(heartbeatInterval);
       socket.off("connect", claimHostRoom);
       realtimeBus.off("join-request", handleJoinRequest);
       realtimeBus.off("update-pending", handleUpdatePending);

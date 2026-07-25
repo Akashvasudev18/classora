@@ -27,24 +27,36 @@ export const StudentClassroom: React.FC = () => {
   useEffect(() => {
     if (!currentRoomId) return;
 
-    // Emit join-request on mount via realtimeBus
-    realtimeBus.emit(
-      "join-request",
-      { roomId: currentRoomId, studentId, name: studentName },
-      (res: any) => {
-        if (res && res.status === "pending") {
-          setStatus("pending");
-        } else if (res && !res.success) {
-          navigate("/error", {
-            state: { type: "invalid-code", message: res.message },
-          });
+    const emitJoinRequest = () => {
+      realtimeBus.emit(
+        "join-request",
+        { roomId: currentRoomId, studentId, name: studentName },
+        (res: any) => {
+          if (res && res.status === "pending") {
+            setStatus("pending");
+          } else if (res && !res.success) {
+            navigate("/error", {
+              state: { type: "invalid-code", message: res.message },
+            });
+          }
         }
+      );
+    };
+
+    emitJoinRequest();
+    socket.on("connect", emitJoinRequest);
+
+    // 2-second heartbeat for pending students to ensure request is registered on Render
+    const pendingHeartbeat = setInterval(() => {
+      if (status === "pending") {
+        emitJoinRequest();
       }
-    );
+    }, 2500);
 
     const handleStudentApproved = (data: { roomId: string; studentId?: string; editorContent: string }) => {
       if (data.studentId && data.studentId !== studentId) return;
       setStatus("approved");
+      clearInterval(pendingHeartbeat);
       if (data.editorContent !== undefined) {
         setEditorContent(data.editorContent);
       }
@@ -53,6 +65,7 @@ export const StudentClassroom: React.FC = () => {
     const handleStudentRejected = (data: { roomId: string; studentId?: string; reason?: string }) => {
       if (data.studentId && data.studentId !== studentId) return;
       setStatus("rejected");
+      clearInterval(pendingHeartbeat);
       setRejectionReason(data.reason || "The teacher declined your join request.");
     };
 
@@ -87,6 +100,8 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
     return () => {
+      clearInterval(pendingHeartbeat);
+      socket.off("connect", emitJoinRequest);
       realtimeBus.off("student-approved", handleStudentApproved);
       realtimeBus.off("student-rejected", handleStudentRejected);
       realtimeBus.off("editor-update", handleEditorUpdate);
@@ -95,7 +110,7 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
-  }, [currentRoomId, studentId, studentName, navigate]);
+  }, [currentRoomId, studentId, studentName, status, navigate]);
 
   if (status === "pending") {
     return (

@@ -15,7 +15,7 @@ export interface HintResponseResult {
 }
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 25000; // Increased to 25 seconds for reliable responses
 
 export class PromptBuilder {
   public static buildSystemPrompt(): string {
@@ -80,14 +80,19 @@ export class AIService {
     const systemPrompt = PromptBuilder.buildSystemPrompt();
     const userPrompt = PromptBuilder.buildUserPrompt(payload);
 
-    // Reliable working OpenRouter models in order of performance
+    // Reliable working OpenRouter models in order of performance and availability
     const modelsToTry = [
-      "openrouter/auto",
       "google/gemini-2.5-flash-lite",
+      "google/gemini-2.0-flash-001",
       "openai/gpt-3.5-turbo",
+      "openrouter/auto",
       "meta-llama/llama-3.3-70b-instruct",
       "deepseek/deepseek-chat",
+      "qwen/qwen-2.5-coder-32b-instruct",
+      "microsoft/phi-3-mini-128k-instruct",
     ];
+
+    let lastErrorDetails = "";
 
     for (const model of modelsToTry) {
       try {
@@ -133,17 +138,19 @@ export class AIService {
           }
         } else {
           const errText = await response.text();
-          console.warn(`[AIService] Model ${model} returned HTTP ${response.status}: ${errText}`);
+          lastErrorDetails = `HTTP ${response.status} (${model}): ${errText}`;
+          console.warn(`[AIService] Model ${model} returned ${lastErrorDetails}`);
         }
       } catch (err: any) {
-        console.warn(`[AIService] Error attempting model ${model}: ${err.message}`);
+        lastErrorDetails = `Error (${model}): ${err.message}`;
+        console.warn(`[AIService] ${lastErrorDetails}`);
       }
     }
 
     return {
       success: false,
-      hint: "The AI Assistant is currently experiencing high demand or network latency. Please try clicking 'Get AI Hint' again in a few moments.",
-      error: "All OpenRouter models unreachable",
+      hint: `The AI Assistant is currently experiencing high demand or network latency.\n\nDiagnostic info: ${lastErrorDetails || "OpenRouter models unreachable"}\n\nPlease click 'Get AI Hint' again in a few moments.`,
+      error: lastErrorDetails || "All OpenRouter models unreachable",
     };
   }
 }

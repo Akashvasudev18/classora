@@ -109,10 +109,14 @@ export const setupSocketHandlers = (io: Server) => {
       if (approvedStudent) {
         console.log(`[Approve] Host approved student "${approvedStudent.name}" (${studentId}) in ${cleanRoomId}`);
 
-        io.to(approvedStudent.socketId).emit("student-approved", {
+        const approvalPayload = {
           roomId: cleanRoomId,
+          studentId: approvedStudent.id,
           editorContent: room.editorContent,
-        });
+        };
+
+        io.to(approvedStudent.socketId).emit("student-approved", approvalPayload);
+        io.to(cleanRoomId).emit("student-approved", approvalPayload);
 
         io.to(cleanRoomId).emit("student-connected", {
           roomId: cleanRoomId,
@@ -133,10 +137,14 @@ export const setupSocketHandlers = (io: Server) => {
       if (rejectedStudent) {
         console.log(`[Reject] Host rejected student "${rejectedStudent.name}" (${studentId}) in ${cleanRoomId}`);
 
-        io.to(rejectedStudent.socketId).emit("student-rejected", {
+        const rejectionPayload = {
           roomId: cleanRoomId,
+          studentId: rejectedStudent.id,
           reason: "The teacher declined your request to join this session.",
-        });
+        };
+
+        io.to(rejectedStudent.socketId).emit("student-rejected", rejectionPayload);
+        io.to(cleanRoomId).emit("student-rejected", rejectionPayload);
 
         io.to(cleanRoomId).emit("update-pending", {
           roomId: cleanRoomId,

@@ -4,14 +4,21 @@ Classora is a high-performance, production-ready real-time collaborative learnin
 
 ---
 
+## 🌐 Live Production Links
+
+- **Frontend Application (Vercel)**: **[https://client-nine-sand-55.vercel.app](https://client-nine-sand-55.vercel.app)**
+- **Backend Server (Render 24/7 Cloud)**: **[https://classora-3s1d.onrender.com](https://classora-3s1d.onrender.com)**
+
+---
+
 ## 🚀 Key Features
 
 - ⚡ **Zero Database In-Memory Architecture**: All room state and live editor synchronizations are handled purely in memory.
-- 🔒 **Waiting Room Access Control**: Teachers accept or reject student join requests in real time.
-- 📝 **Synchronized Live Textarea Editor**: Every keystroke typed by the teacher is broadcast instantly to all connected students.
-- 📖 **Read-Only Student Mode**: Students receive a read-only textarea that supports highlighting, selecting text, copying, and scrolling without editing permissions.
+- 🐍 **Python Monaco Editor**: Teacher types in a VS Code Dark Python editor powered by `@monaco-editor/react`. Students receive a real-time read-only Monaco view.
+- 🔒 **Waiting Room Access Control**: Teachers accept or reject student join requests in real time with 1-tap "Accept All" capabilities.
+- 📱 **Mobile & Multi-Device Support**: Responsive layout featuring urgent pending alert banners and automatic top-positioning of waiting room requests on small screens.
 - 🛑 **Complete "End Class" Workflow**: Closing a classroom purges memory immediately and redirects all students to a "Class Ended" screen.
-- 🎨 **Modern Dark Zoom Aesthetic**: Sleek glassmorphism, glowing blue accents (`#2D8CFF`), status badges, and smooth animations.
+- 🎨 **Modern Dark Zoom Aesthetic**: Sleek glassmorphism, glowing blue accents (`#2D8CFF`), status badges, and smooth micro-animations.
 
 ---
 
@@ -20,15 +27,17 @@ Classora is a high-performance, production-ready real-time collaborative learnin
 ### Frontend (`client/`)
 - **Framework**: React 18 + Vite
 - **Language**: TypeScript
+- **Editor**: `@monaco-editor/react` (Python / VS Code Dark)
 - **Styling**: TailwindCSS + Custom Glassmorphism Utilities
 - **Routing**: React Router v6
-- **Real-Time Engine**: Socket.IO Client
+- **Real-Time Engine**: Socket.IO Client + Singleton `SocketService`
 - **Icons**: Lucide React
 
 ### Backend (`server/`)
 - **Runtime**: Node.js + Express
 - **Language**: TypeScript (`tsx`)
 - **Real-Time Engine**: Socket.IO
+- **Deployment**: Render (`render.yaml`)
 - **Utilities**: CORS, UUID
 
 ---
@@ -41,9 +50,9 @@ classora/
 │   ├── src/
 │   │   ├── components/     # Reusable UI components
 │   │   │   ├── common/     # Avatar, StatusBadge, LoadingSpinner
-│   │   │   └── classroom/  # LiveEditor, WaitingRoomPanel, StudentListPanel
+│   │   │   └── classroom/  # LiveEditor (Monaco), WaitingRoomPanel, StudentListPanel
 │   │   ├── pages/          # Home, HostDashboard, JoinPage, StudentClassroom, ClassEndedPage, ErrorPage
-│   │   ├── services/       # Socket client singleton & status hooks
+│   │   ├── services/       # SocketService singleton & status hooks
 │   │   ├── App.tsx         # React Router navigation
 │   │   └── main.tsx
 │   ├── vercel.json         # Vercel SPA routing rewrite config
@@ -57,84 +66,25 @@ classora/
 │   ├── tsconfig.json
 │   └── package.json
 │
+├── render.yaml             # Render 1-click Web Service Deployment Config
 └── package.json            # Root workspace script runner
 ```
 
 ---
 
-## 💻 Local Development Setup
-
-### 1. Prerequisites
-- Node.js 18+ and `npm` installed.
-
-### 2. Installation
-Run the workspace installer from the root directory:
+## 💻 Local Development
 
 ```bash
-# Install dependencies for both client and server
-npm run install:all
-```
+# Install root dependencies
+npm install
 
-Alternatively, install in each folder manually:
-
-```bash
-cd server && npm install
-cd ../client && npm install
-```
-
-### 3. Running Locally
-
-#### Start the Backend Server (Port 5000)
-```bash
+# Start Backend Server (Port 5000)
 cd server
 npm run dev
-```
 
-#### Start the Frontend Dev Server (Port 5173)
-```bash
-cd client
+# Start Frontend Dev Server (Port 5173)
+cd ../client
 npm run dev
 ```
 
-Open `http://localhost:5173/` in your browser to view the application.
-
----
-
-## 🌐 Deployment Instructions
-
-### 1. Deploying Frontend to Vercel
-
-1. Push your code to a GitHub/GitLab repository.
-2. Sign in to [Vercel](https://vercel.com/) and click **Add New Project**.
-3. Import your project repository.
-4. Set the **Root Directory** to `client`.
-5. Environment Variable:
-   - `VITE_SERVER_URL`: URL of your deployed Render backend (e.g. `https://classora-backend.onrender.com`).
-6. Click **Deploy**. (The included `client/vercel.json` ensures SPA client-side routes redirect correctly to `index.html`).
-
----
-
-### 2. Deploying Backend to Render
-
-1. Sign in to [Render](https://render.com/) and create a new **Web Service**.
-2. Connect your project repository.
-3. Configure settings:
-   - **Root Directory**: `server`
-   - **Environment**: Node
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-4. Set Environment Variables:
-   - `PORT`: `5000` (or leave default; Render automatically assigns `PORT`)
-5. Click **Create Web Service**.
-
----
-
-## 🧪 Testing the Complete Workflow
-
-1. Open `http://localhost:5173/` in Browser 1. Click **Host Class**. Note the generated Room Code (e.g. `ABC123`).
-2. Open `http://localhost:5173/join` in Browser 2. Enter student name "Alex" and code `ABC123`. Click **Join Class**.
-3. In Browser 1 (Host Dashboard), verify "Alex" appears in the **Waiting Room** panel with Accept and Reject buttons.
-4. Click **Accept** in Browser 1.
-5. In Browser 2 (Student Classroom), verify the screen unlocks to the active classroom view.
-6. Type inside the large textarea in Browser 1. Verify every keystroke updates in real time inside Browser 2's read-only textarea.
-7. Click **End Class** in Browser 1. Verify Browser 1 redirects to Home (`/`) and Browser 2 is redirected to the **Class Ended** screen.
+Visit `http://localhost:5173` in your browser.

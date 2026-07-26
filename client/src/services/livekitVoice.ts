@@ -44,6 +44,17 @@ export async function fetchLiveKitToken(
   }
 }
 
+export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
+  try {
+    // Request permission once to ensure labels are populated
+    await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((d) => d.kind === "audioinput");
+  } catch (err) {
+    return [];
+  }
+}
+
 // Global Web Audio Context & Autoplay Policy Unlocker
 let globalAudioCtx: AudioContext | null = null;
 
@@ -83,6 +94,7 @@ class OpenRelayWebRTCEngine {
   private isTeacher: boolean = false;
   private isMicEnabled: boolean = false;
   private currentRoomId: string = "";
+  private selectedDeviceId: string = "";
 
   public async init(roomId: string, isTeacher: boolean): Promise<boolean> {
     this.currentRoomId = (roomId || "DEMO").toUpperCase();
@@ -94,6 +106,7 @@ class OpenRelayWebRTCEngine {
       if (isTeacher) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
@@ -109,12 +122,25 @@ class OpenRelayWebRTCEngine {
     return true;
   }
 
+  public async setAudioInputDevice(deviceId: string): Promise<boolean> {
+    this.selectedDeviceId = deviceId;
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((t) => t.stop());
+      this.localStream = null;
+    }
+    if (this.isMicEnabled) {
+      return await this.setMicrophoneEnabled(true);
+    }
+    return true;
+  }
+
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {
     this.isMicEnabled = enabled;
     try {
       if (enabled && !this.localStream) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
@@ -206,7 +232,6 @@ class OpenRelayWebRTCEngine {
       this.peerConnections[targetSocketId].close();
     }
 
-    // OpenRelay Global TURN + STUN Servers (Passes 100% of mobile 4G/5G cellular NATs & firewalls)
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -262,6 +287,7 @@ class WebAudioPCMEngine {
   private isMicEnabled: boolean = false;
   private currentRoomId: string = "";
   private senderName: string = "Speaker";
+  private selectedDeviceId: string = "";
   private nextPlayTime: number = 0;
 
   public async init(roomId: string, senderName: string, isTeacher: boolean): Promise<boolean> {
@@ -277,6 +303,18 @@ class WebAudioPCMEngine {
       await this.startMicrophoneCapture();
     }
 
+    return true;
+  }
+
+  public async setAudioInputDevice(deviceId: string): Promise<boolean> {
+    this.selectedDeviceId = deviceId;
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((t) => t.stop());
+      this.localStream = null;
+    }
+    if (this.isMicEnabled) {
+      return await this.setMicrophoneEnabled(true);
+    }
     return true;
   }
 
@@ -296,6 +334,7 @@ class WebAudioPCMEngine {
       if (!this.localStream) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio: {
+            deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined,
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
@@ -476,7 +515,6 @@ export class LiveKitVoiceManager {
       this.isConnected = true;
       this.voiceMode = "webrtc";
     } else {
-      // Use PCM Engine ONLY if WebRTC fails to initialize
       console.log(`[LiveKitVoice] WebRTC failed. Initializing PCM Engine for room "${roomId}"...`);
       const okPCM = await this.pcmEngine.init(roomId, identity, isTeacher);
       this.isConnected = okPCM;
@@ -485,6 +523,15 @@ export class LiveKitVoiceManager {
 
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(this.isConnected);
     return this.isConnected;
+  }
+
+  public async setAudioInputDevice(deviceId: string): Promise<boolean> {
+    if (this.voiceMode === "webrtc") {
+      return await this.webrtcEngine.setAudioInputDevice(deviceId);
+    } else if (this.voiceMode === "pcm") {
+      return await this.pcmEngine.setAudioInputDevice(deviceId);
+    }
+    return true;
   }
 
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {

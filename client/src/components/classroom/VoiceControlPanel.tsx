@@ -1,6 +1,7 @@
-import React, { useState } from "react";
-import { Mic, MicOff, Hand, Volume2, VolumeX, Shield, ChevronDown, ChevronUp, Radio } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Mic, MicOff, Hand, Volume2, VolumeX, Shield, ChevronDown, ChevronUp, Radio, Settings } from "lucide-react";
 import { Student } from "./WaitingRoomPanel";
+import { getAudioInputDevices, livekitVoiceManager } from "../../services/livekitVoice";
 
 interface VoiceControlPanelProps {
   students: Student[];
@@ -22,6 +23,25 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   isVoiceConnected,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      const devices = await getAudioInputDevices();
+      setAudioDevices(devices);
+      if (devices.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(devices[0].deviceId);
+      }
+    };
+    loadDevices();
+  }, []);
+
+  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDeviceId = e.target.value;
+    setSelectedDeviceId(newDeviceId);
+    livekitVoiceManager.setAudioInputDevice(newDeviceId);
+  };
 
   const activeSpeaker = students.find((s) => s.id === activeSpeakerId);
   const queueStudents = students.filter((s) => raisedHands.includes(s.id));
@@ -76,6 +96,27 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
       {!isCollapsed && (
         <div className="p-4 space-y-4">
+          {/* Microphone Selector Bar for Teacher */}
+          {audioDevices.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-indigo-300 font-semibold shrink-0">
+                <Settings className="w-4 h-4 text-indigo-400" />
+                <span>Microphone Device:</span>
+              </div>
+              <select
+                value={selectedDeviceId}
+                onChange={handleDeviceChange}
+                className="bg-slate-800 text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-indigo-500 w-full max-w-xs truncate cursor-pointer"
+              >
+                {audioDevices.map((d, index) => (
+                  <option key={d.deviceId || index} value={d.deviceId}>
+                    {d.label || `Microphone ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Top Row: Current Active Speaker & Emergency Mute All */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Current Student Speaker Box (2 Columns) */}

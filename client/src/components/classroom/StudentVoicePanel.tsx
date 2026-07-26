@@ -1,5 +1,6 @@
-import React from "react";
-import { Mic, MicOff, Hand, Volume2, ShieldAlert, CheckCircle2, Clock } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Mic, MicOff, Hand, Volume2, ShieldAlert, CheckCircle2, Clock, Settings } from "lucide-react";
+import { getAudioInputDevices, livekitVoiceManager } from "../../services/livekitVoice";
 
 interface StudentVoicePanelProps {
   hasHandRaised: boolean;
@@ -16,9 +17,29 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
   onLowerHand,
   isVoiceConnected,
 }) => {
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      const devices = await getAudioInputDevices();
+      setAudioDevices(devices);
+      if (devices.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(devices[0].deviceId);
+      }
+    };
+    loadDevices();
+  }, []);
+
+  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDeviceId = e.target.value;
+    setSelectedDeviceId(newDeviceId);
+    livekitVoiceManager.setAudioInputDevice(newDeviceId);
+  };
+
   return (
     <div className="rounded-2xl bg-[#111621] border border-slate-800 p-4 shadow-xl font-sans space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         {/* Status Indicator */}
         <div className="flex items-center gap-2.5">
           <div
@@ -49,7 +70,7 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
                     : "bg-slate-800 border border-slate-700 text-slate-400"
                 }`}
               >
-                {isVoiceConnected ? "Voice Connected" : "Voice Offline"}
+                {isVoiceConnected ? "Voice Connected 🟢" : "Voice Offline"}
               </span>
             </div>
 
@@ -70,6 +91,24 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Microphone Input Device Selector Dropdown for Student */}
+        {audioDevices.length > 0 && (
+          <div className="flex items-center gap-2 text-xs bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
+            <Settings className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <select
+              value={selectedDeviceId}
+              onChange={handleDeviceChange}
+              className="bg-transparent text-slate-300 border-none text-xs focus:outline-none cursor-pointer max-w-[180px] truncate"
+            >
+              {audioDevices.map((d, index) => (
+                <option key={d.deviceId || index} value={d.deviceId} className="bg-slate-900 text-slate-200">
+                  {d.label || `Microphone ${index + 1}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Raise Hand / Lower Hand Toggle Button */}
         {!isSpeakingPermitted && (

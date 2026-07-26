@@ -163,7 +163,7 @@
   }
 }
 
-/* MacBook 3D Showcase by Spacious74 (Customized for Classora Website Theme) */
+/* MacBook 3D Scroll-Driven Interactive Showcase by Spacious74 */
 .macbook-container {
   display: flex;
   flex-direction: column;
@@ -180,7 +180,7 @@
   align-items: center;
 }
 
-.screen {
+.screen-scrollable {
   border-radius: 20px;
   box-shadow: inset 0 0 0 2px #c8cacb, inset 0 0 0 10px #000, 0 20px 60px rgba(0, 0, 0, 0.85);
   height: 318px;
@@ -202,19 +202,11 @@
   );
   transform-style: preserve-3d;
   transform-origin: 50% 100%;
-  animation: open-macbook 4s cubic-bezier(0.25, 1, 0.5, 1) infinite alternate;
+  will-change: transform;
+  transition: transform 0.1s linear;
 }
 
-@keyframes open-macbook {
-  0% {
-    transform: perspective(1900px) rotateX(-82deg);
-  }
-  100% {
-    transform: perspective(1000px) rotateX(0deg);
-  }
-}
-
-.screen::before {
+.screen-scrollable::before {
   content: "";
   width: 518px;
   height: 12px;
@@ -237,7 +229,7 @@
   z-index: 10;
 }
 
-.screen::after {
+.screen-scrollable::after {
   background: linear-gradient(to bottom, #272727, #0d0d0d);
   border-radius: 0 0 20px 20px;
   bottom: 2px;

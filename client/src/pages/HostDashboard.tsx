@@ -47,9 +47,6 @@ export const HostDashboard: React.FC = () => {
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | undefined>(undefined);
   const [analysisModelUsed, setAnalysisModelUsed] = useState<string | undefined>(undefined);
 
-  // Local map storing latest student code & terminal snapshots received over sockets
-  const [studentSnapshots, setStudentSnapshots] = useState<{ [studentId: string]: { code: string; terminalResult?: ExecutionResult } }>({});
-
   useEffect(() => {
     if (!currentRoomId) return;
 
@@ -126,12 +123,6 @@ export const HostDashboard: React.FC = () => {
       setIsInspectionLoading(false);
       setInspectedStudentCode(data.code);
       setInspectedStudentTerminal(data.terminalResult || null);
-
-      // Cache snapshot for class progress analysis
-      setStudentSnapshots((prev) => ({
-        ...prev,
-        [data.studentId]: { code: data.code, terminalResult: data.terminalResult },
-      }));
     };
 
     realtimeBus.on("join-request", handleJoinRequest);
@@ -234,38 +225,16 @@ export const HostDashboard: React.FC = () => {
     });
   };
 
-  // AI Class Progress Analysis Trigger
+  // AI Class Progress Analysis Trigger (Fetches live student practice code directly from backend room memory)
   const handleAnalyzeClassProgress = async () => {
     if (isAnalyzingClass || students.length === 0) return;
 
     setIsAnalyzingClass(true);
 
-    // Request latest code from all connected students over socket
-    students.forEach((student) => {
-      realtimeBus.emit("request-student-code", {
-        roomId: currentRoomId,
-        studentId: student.id,
-      });
-    });
-
-    // Short wait to gather socket responses
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    const studentsData = students.map((s) => {
-      const snap = studentSnapshots[s.id];
-      return {
-        studentId: s.id,
-        studentName: s.name,
-        code: snap?.code || "# (No code written yet)",
-        output: snap?.terminalResult?.output,
-        stderr: snap?.terminalResult?.stderr,
-      };
-    });
-
     const res = await analyzeClassProgress({
+      roomId: currentRoomId,
       problemTitle: activePractice?.title || "Class Practice",
       problemDescription: activePractice?.description || "",
-      studentsData,
     });
 
     setIsAnalyzingClass(false);

@@ -156,12 +156,30 @@ app.post("/api/ai/hint", async (req, res) => {
 // AI Teacher Class Progress Analysis Endpoint
 app.post("/api/ai/analyze-class", async (req, res) => {
   try {
-    const { problemTitle, problemDescription, studentsData } = req.body || {};
+    const { roomId, problemTitle, problemDescription, studentsData } = req.body || {};
+
+    let effectiveStudentsData = studentsData || [];
+
+    // If roomId is provided, read live student practice code & terminal outputs directly from roomManager memory
+    if (roomId && typeof roomId === "string") {
+      const cleanRoomId = roomId.toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+
+      if (room && room.students && room.students.length > 0) {
+        effectiveStudentsData = room.students.map((s) => ({
+          studentId: s.id,
+          studentName: s.name,
+          code: s.practiceCode || "# (No code written yet)",
+          output: s.practiceResult?.output,
+          stderr: s.practiceResult?.stderr,
+        }));
+      }
+    }
 
     const result = await AIProgressService.analyzeClassProgress({
       problemTitle,
       problemDescription,
-      studentsData: studentsData || [],
+      studentsData: effectiveStudentsData,
     });
 
     return res.json(result);

@@ -9,9 +9,10 @@ export interface StudentSnapshotPayload {
 }
 
 export interface ClassAnalysisRequestPayload {
+  roomId?: string;
   problemTitle?: string;
   problemDescription?: string;
-  studentsData: StudentSnapshotPayload[];
+  studentsData?: StudentSnapshotPayload[];
 }
 
 export interface StudentAnalysisResult {

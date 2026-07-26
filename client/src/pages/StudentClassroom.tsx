@@ -48,6 +48,22 @@ export const StudentClassroom: React.FC = () => {
   const [isRequestingHint, setIsRequestingHint] = useState<boolean>(false);
   const [isHintPanelOpen, setIsHintPanelOpen] = useState<boolean>(false);
 
+  // Real-Time Student Practice Code & Terminal Output Sync to Backend Room Memory
+  useEffect(() => {
+    if (!currentRoomId || status !== "approved") return;
+
+    const timer = setTimeout(() => {
+      realtimeBus.emit("sync-student-practice-code", {
+        roomId: currentRoomId,
+        studentId,
+        code: practiceCode,
+        terminalResult: practiceResult,
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [currentRoomId, studentId, status, practiceCode, practiceResult]);
+
   useEffect(() => {
     if (!currentRoomId) return;
 
@@ -217,6 +233,14 @@ export const StudentClassroom: React.FC = () => {
     const result = await runPythonCode(practiceCode, "", practiceStdin);
     setIsPracticeExecuting(false);
     setPracticeResult(result);
+
+    // Immediately sync execution result to server
+    realtimeBus.emit("sync-student-practice-code", {
+      roomId: currentRoomId,
+      studentId,
+      code: practiceCode,
+      terminalResult: result,
+    });
   };
 
   const handleGetAIHint = async () => {

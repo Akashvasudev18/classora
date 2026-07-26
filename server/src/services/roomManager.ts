@@ -2,6 +2,8 @@ export interface Student {
   id: string;
   name: string;
   socketId: string;
+  practiceCode?: string;
+  practiceResult?: any;
 }
 
 export interface PracticeProblem {
@@ -106,6 +108,22 @@ export class RoomManager {
     if (!room) return false;
     room.editorContent = content;
     return true;
+  }
+
+  // Update student practice code and terminal execution result in real time
+  public updateStudentPracticeState(roomId: string, studentId: string, code: string, terminalResult?: any): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+
+    const student = room.students.find(s => s.id === studentId || s.socketId === studentId);
+    if (student) {
+      student.practiceCode = code;
+      if (terminalResult !== undefined) {
+        student.practiceResult = terminalResult;
+      }
+      return true;
+    }
+    return false;
   }
 
   // Practice Session Management

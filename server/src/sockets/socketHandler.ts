@@ -204,15 +204,21 @@ export const setupSocketHandlers = (io: Server) => {
       io.to(cleanRoomId).emit("practice-ended", payload);
     });
 
+    // Real-Time Student Practice Code Sync Event
+    socket.on("sync-student-practice-code", ({ roomId, studentId, code, terminalResult }: { roomId: string; studentId: string; code: string; terminalResult?: any }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      roomManager.updateStudentPracticeState(cleanRoomId, studentId, code, terminalResult);
+    });
+
     // 8. Teacher Student Code Inspection & Live Assistance Events
     socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       const room = roomManager.getRoom(cleanRoomId);
       if (!room) return;
 
-      const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId);
+      const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId || s.socketId === socket.id);
       if (targetStudent) {
-        console.log(`[Inspection] Teacher requesting code & terminal from student "${targetStudent.name}" (${studentId})`);
+        console.log(`[Inspection] Teacher requesting code & terminal from student "${targetStudent.name}" (${targetStudent.id})`);
         io.to(targetStudent.socketId).emit("request-student-code", {
           teacherSocketId: socket.id,
           studentId: targetStudent.id,
@@ -221,6 +227,18 @@ export const setupSocketHandlers = (io: Server) => {
     });
 
     socket.on("send-student-code", ({ teacherSocketId, studentId, studentName, code, terminalResult }: { teacherSocketId: string; studentId: string; studentName: string; code: string; terminalResult?: any }) => {
+      // Find room containing target student socket or teacher socket
+      for (const roomId of Object.keys(roomManager.getAllRooms())) {
+        const room = roomManager.getRoom(roomId);
+        if (room) {
+          const s = room.students.find(st => st.id === studentId || st.socketId === socket.id);
+          if (s) {
+            roomManager.updateStudentPracticeState(roomId, s.id, code, terminalResult);
+            break;
+          }
+        }
+      }
+
       console.log(`[Inspection] Received code & terminal from student "${studentName}". Relaying to teacher ${teacherSocketId}`);
       io.to(teacherSocketId).emit("receive-student-code", {
         studentId,
@@ -239,6 +257,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       const targetStudent = room.students.find((s) => s.id === studentId || s.socketId === studentId);
       if (targetStudent) {
+        targetStudent.practiceCode = code;
         console.log(`[Teacher Assistance] Teacher pushing code edit to student "${targetStudent.name}" (${studentId})`);
         io.to(targetStudent.socketId).emit("teacher-edited-code", {
           code,

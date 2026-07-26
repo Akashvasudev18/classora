@@ -13,7 +13,7 @@ import { PracticeEditor } from "../components/classroom/PracticeEditor";
 import { ResizableSplitLayout } from "../components/classroom/ResizableSplitLayout";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { ProblemPanel } from "../components/classroom/ProblemPanel";
-import { StudentVoicePanel } from "../components/classroom/StudentVoicePanel";
+import { SleekVoiceSidebar } from "../components/classroom/SleekVoiceSidebar";
 import { Student } from "../components/classroom/WaitingRoomPanel";
 import { PracticeProblem } from "../shared/problems";
 
@@ -510,20 +510,22 @@ export const StudentClassroom: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Container - Discord-Inspired 3-Column Professional Workspace */}
-      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-col lg:flex-row gap-5 min-w-0 overflow-x-hidden">
-        {/* LEFT SIDEBAR: Discord-like Audio Control & Raised Hand Panel */}
-        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
-          <StudentVoicePanel
-            hasHandRaised={hasHandRaised}
-            isSpeakingPermitted={isSpeakingPermitted}
-            onRaiseHand={handleRaiseHand}
-            onLowerHand={handleLowerHand}
-            isVoiceConnected={isVoiceConnected}
-            onConnectTeacherAudio={handleConnectTeacherAudio}
-            isListeningToTeacher={isListeningToTeacher}
-          />
-        </aside>
+      {/* Main Container - Discord-Inspired Ultra-Sleek 3-Column Layout */}
+      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-row gap-4 min-w-0 overflow-x-hidden">
+        {/* LEFT SIDEBAR: Ultra-Thin Sleek Discord Voice Rail */}
+        <SleekVoiceSidebar
+          isHost={false}
+          students={students}
+          raisedHands={raisedHands}
+          activeSpeakerId={activeSpeakerId}
+          isVoiceConnected={isVoiceConnected}
+          hasHandRaised={hasHandRaised}
+          isSpeakingPermitted={isSpeakingPermitted}
+          onRaiseHand={handleRaiseHand}
+          onLowerHand={handleLowerHand}
+          onConnectTeacherAudio={handleConnectTeacherAudio}
+          isListeningToTeacher={isListeningToTeacher}
+        />
 
         {/* CENTER COLUMN: Main Workspace Area (Centered & Full Width Code Editors) */}
         <main className="flex-1 min-w-0 flex flex-col space-y-4 overflow-y-auto">

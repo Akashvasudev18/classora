@@ -13,7 +13,7 @@ import { LiveEditor } from "../components/classroom/LiveEditor";
 import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
 import { StudentCodeModal } from "../components/classroom/StudentCodeModal";
 import { StudentProgressDashboard } from "../components/classroom/StudentProgressDashboard";
-import { VoiceControlPanel } from "../components/classroom/VoiceControlPanel";
+import { SleekVoiceSidebar } from "../components/classroom/SleekVoiceSidebar";
 import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
@@ -439,20 +439,19 @@ export const HostDashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Container - Discord-Inspired 3-Column Professional Workspace */}
-      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-col lg:flex-row gap-5 min-w-0 overflow-x-hidden">
-        {/* LEFT SIDEBAR: Discord-like Compact Voice Control Panel */}
-        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
-          <VoiceControlPanel
-            students={students}
-            raisedHands={raisedHands}
-            activeSpeakerId={activeSpeakerId}
-            onAllowSpeaker={handleAllowSpeaker}
-            onRemoveSpeaker={handleRemoveSpeaker}
-            onMuteAll={handleMuteAll}
-            isVoiceConnected={isVoiceConnected}
-          />
-        </aside>
+      {/* Main Container - Discord-Inspired Ultra-Sleek 3-Column Layout */}
+      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-row gap-4 min-w-0 overflow-x-hidden">
+        {/* LEFT SIDEBAR: Ultra-Thin Sleek Discord Voice Rail */}
+        <SleekVoiceSidebar
+          isHost={true}
+          students={students}
+          raisedHands={raisedHands}
+          activeSpeakerId={activeSpeakerId}
+          onAllowSpeaker={handleAllowSpeaker}
+          onRemoveSpeaker={handleRemoveSpeaker}
+          onMuteAll={handleMuteAll}
+          isVoiceConnected={isVoiceConnected}
+        />
 
         {/* CENTER COLUMN: Main Coding & Practice Workspace (Centered & Full Height) */}
         <main className="flex-1 min-w-0 flex flex-col space-y-4 overflow-y-auto">

@@ -4,40 +4,47 @@ import { Sparkles, Code2, Users } from "lucide-react";
 
 export const MacBookShowcase: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [openProgress, setOpenProgress] = useState<number>(0); // 0 (closed & zoomed out) to 1 (open & zoomed in)
+  const targetProgress = useRef<number>(0);
+  const currentProgress = useRef<number>(0);
+  const [smoothProgress, setSmoothProgress] = useState<number>(0);
   const [slideIndex, setSlideIndex] = useState<number>(0);
 
   useEffect(() => {
-    let ticking = false;
+    let animFrameId: number;
 
     const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
 
-            // Start opening and zooming when top of element enters 92% of viewport height
-            // Fully open and zoomed in when element reaches 45% of viewport height
-            const startPoint = windowHeight * 0.92;
-            const endPoint = windowHeight * 0.45;
+      // Expanded scroll range for gradual, luxurious motion:
+      // Starts opening/zooming when element top reaches 115% window height
+      // Reaches full open & zoomed-in state when element top reaches 20% window height
+      const startPoint = windowHeight * 1.15;
+      const endPoint = windowHeight * 0.20;
 
-            const current = rect.top;
-            const rawProgress = (startPoint - current) / (startPoint - endPoint);
-            const clampedProgress = Math.min(1, Math.max(0, rawProgress));
+      const current = rect.top;
+      const raw = (startPoint - current) / (startPoint - endPoint);
+      targetProgress.current = Math.min(1, Math.max(0, raw));
+    };
 
-            setOpenProgress(clampedProgress);
-          }
-          ticking = false;
-        });
-        ticking = true;
-      }
+    // Smooth Lerp Physics loop (Linear Interpolation for Apple-grade fluid momentum)
+    const updateLerp = () => {
+      const diff = targetProgress.current - currentProgress.current;
+      currentProgress.current += diff * 0.075; // 0.075 dampening factor for ultra-smooth gliding
+
+      setSmoothProgress(currentProgress.current);
+      animFrameId = requestAnimationFrame(updateLerp);
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll(); // Initial check
+    handleScroll();
+    animFrameId = requestAnimationFrame(updateLerp);
 
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      cancelAnimationFrame(animFrameId);
+    };
   }, []);
 
   useEffect(() => {
@@ -47,22 +54,23 @@ export const MacBookShowcase: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Compute rotateX angle: -88.5deg (closed) at 0 -> 0deg (fully open) at 1
-  const rotateX = -88.5 + openProgress * 88.5;
+  // Compute rotateX angle: -88.5deg (closed flat) -> 0deg (open upright)
+  const rotateX = -88.5 + smoothProgress * 88.5;
 
-  // Compute smooth scale zoom: 0.65 (zoomed out) at 0 -> 1.15 (zoomed in) at 1
-  const scale = 0.65 + openProgress * 0.5;
+  // Compute dramatic scale zoom: 0.55 (compact / zoomed out) -> 1.25 (prominent / zoomed in)
+  const scale = 0.55 + smoothProgress * 0.70;
 
-  // Compute perspective: 1900px down to 1000px
-  const perspective = 1900 - openProgress * 900;
+  // Compute perspective: 2200px down to 1000px
+  const perspective = 2200 - smoothProgress * 1200;
 
   return (
-    <div ref={containerRef} className="macbook-container py-8 overflow-hidden w-full flex justify-center">
+    <div ref={containerRef} className="macbook-container py-12 overflow-hidden w-full flex justify-center min-h-[500px]">
       <div
-        className="laptop-wrapper transition-transform duration-100 ease-out"
+        className="laptop-wrapper"
         style={{
           transform: `scale(${scale})`,
           transformOrigin: "center center",
+          willChange: "transform",
         }}
       >
         <div className="laptop">
@@ -70,6 +78,7 @@ export const MacBookShowcase: React.FC = () => {
             className="screen-scrollable"
             style={{
               transform: `perspective(${perspective}px) rotateX(${rotateX}deg)`,
+              willChange: "transform",
             }}
           >
             <div className="header"></div>

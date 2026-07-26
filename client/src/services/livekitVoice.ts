@@ -115,6 +115,7 @@ if (typeof window !== "undefined") {
 class OpenRelayWebRTCEngine {
   private localStream: MediaStream | null = null;
   private peerConnections: { [socketId: string]: RTCPeerConnection } = {};
+  private iceCandidatesBuffer: { [socketId: string]: any[] } = {};
   private isTeacher: boolean = false;
   private isMicEnabled: boolean = false;
   private currentRoomId: string = "";
@@ -242,12 +243,26 @@ class OpenRelayWebRTCEngine {
     }
   }
 
+  private async processBufferedCandidates(senderSocketId: string) {
+    const pc = this.peerConnections[senderSocketId];
+    if (pc && pc.remoteDescription && this.iceCandidatesBuffer[senderSocketId]) {
+      for (const candidate of this.iceCandidatesBuffer[senderSocketId]) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {}
+      }
+      delete this.iceCandidatesBuffer[senderSocketId];
+    }
+  }
+
   private bindSocketListeners() {
     socket.on("webrtc-offer", async ({ offer, senderSocketId }: { offer: any; senderSocketId: string }) => {
       if (senderSocketId === socket.id) return;
       try {
         const pc = this.createPeerConnection(senderSocketId);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        await this.processBufferedCandidates(senderSocketId);
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -263,6 +278,7 @@ class OpenRelayWebRTCEngine {
         const pc = this.peerConnections[senderSocketId];
         if (pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          await this.processBufferedCandidates(senderSocketId);
         }
       } catch (err) {
         console.error("[WebRTCVoice] Error handling answer:", err);
@@ -273,8 +289,13 @@ class OpenRelayWebRTCEngine {
       if (senderSocketId === socket.id) return;
       try {
         const pc = this.peerConnections[senderSocketId];
-        if (pc && candidate) {
+        if (pc && pc.remoteDescription && candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } else if (candidate) {
+          if (!this.iceCandidatesBuffer[senderSocketId]) {
+            this.iceCandidatesBuffer[senderSocketId] = [];
+          }
+          this.iceCandidatesBuffer[senderSocketId].push(candidate);
         }
       } catch (err) {
         console.error("[WebRTCVoice] Error adding ICE candidate:", err);
@@ -307,6 +328,11 @@ class OpenRelayWebRTCEngine {
         { urls: "turns:openrelay.metered.ca:443", username: "openrelay", credential: "openrelay" },
       ],
     });
+
+    // Ensure audio transceiver is explicitly added for active reception
+    try {
+      pc.addTransceiver("audio", { direction: this.isTeacher ? "sendrecv" : "recvonly" });
+    } catch (e) {}
 
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
@@ -350,6 +376,7 @@ class OpenRelayWebRTCEngine {
     }
     Object.values(this.peerConnections).forEach((pc) => pc.close());
     this.peerConnections = {};
+    this.iceCandidatesBuffer = {};
   }
 }
 

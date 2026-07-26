@@ -71,7 +71,7 @@ export const HostDashboard: React.FC = () => {
         currentRoomId
       );
       setIsVoiceConnected(ok);
-      // Immediately broadcast teacher lecture offer to room
+      // Broadcast teacher lecture offer to room
       livekitVoiceManager.initiatePeerConnection("");
     };
 
@@ -172,6 +172,14 @@ export const HostDashboard: React.FC = () => {
       }
     };
 
+    const handleSendAudioOffer = (data: { studentSocketId: string; roomId: string }) => {
+      if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      console.log(`[HostDashboard] Generating Teacher WebRTC audio offer for student ${data.studentSocketId}`);
+      if (data?.studentSocketId) {
+        livekitVoiceManager.initiatePeerConnection(data.studentSocketId);
+      }
+    };
+
     const handleVoiceStateUpdate = (data: { roomId: string; raisedHands: string[]; activeSpeakerId: string | null }) => {
       if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       setRaisedHands([...(data.raisedHands || [])]);
@@ -195,6 +203,7 @@ export const HostDashboard: React.FC = () => {
     realtimeBus.on("update-pending", handleUpdatePending);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
+    realtimeBus.on("teacher-send-audio-offer", handleSendAudioOffer);
     realtimeBus.on("voice-state-update", handleVoiceStateUpdate);
     realtimeBus.on("execution-result", handleExecutionResult);
     realtimeBus.on("receive-student-code", handleReceiveStudentCode);
@@ -207,6 +216,7 @@ export const HostDashboard: React.FC = () => {
       realtimeBus.off("update-pending", handleUpdatePending);
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
+      realtimeBus.off("teacher-send-audio-offer", handleSendAudioOffer);
       realtimeBus.off("voice-state-update", handleVoiceStateUpdate);
       realtimeBus.off("execution-result", handleExecutionResult);
       realtimeBus.off("receive-student-code", handleReceiveStudentCode);

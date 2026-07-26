@@ -122,11 +122,8 @@ export const StudentClassroom: React.FC = () => {
       setStatus("approved");
       unlockAudioPlayer();
       initVoice().then(() => {
-        socket.emit("get-room-state", { roomId: currentRoomId }, (res: any) => {
-          if (res?.roomState?.teacherSocket) {
-            livekitVoiceManager.initiatePeerConnection(res.roomState.teacherSocket);
-          }
-        });
+        // Request Teacher audio offer immediately from host upon approval
+        socket.emit("request-teacher-audio", { roomId: currentRoomId });
       });
 
       if (data.editorContent !== undefined) {
@@ -326,12 +323,10 @@ export const StudentClassroom: React.FC = () => {
     setIsPracticeExecuting(true);
     setPracticeResult(null);
 
-    // Private student practice execution (roomId = "" prevents broadcasting to room)
     const result = await runPythonCode(practiceCode, "", practiceStdin);
     setIsPracticeExecuting(false);
     setPracticeResult(result);
 
-    // Immediately sync execution result to server
     realtimeBus.emit("sync-student-practice-code", {
       roomId: currentRoomId,
       studentId,

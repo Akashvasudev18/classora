@@ -326,6 +326,16 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
+    // Request Teacher Audio Connection (Triggered by joining students)
+    socket.on("request-teacher-audio", ({ roomId }: { roomId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+      if (room && room.teacherSocket) {
+        console.log(`[Voice] Student ${socket.id} requested Teacher audio offer in ${cleanRoomId}`);
+        io.to(room.teacherSocket).emit("teacher-send-audio-offer", { studentSocketId: socket.id, roomId: cleanRoomId });
+      }
+    });
+
     // 10. WebRTC Signaling Events
     socket.on("webrtc-offer", ({ roomId, targetSocketId, offer }: { roomId: string; targetSocketId?: string; offer: any }) => {
       const cleanRoomId = (roomId || "").toUpperCase();

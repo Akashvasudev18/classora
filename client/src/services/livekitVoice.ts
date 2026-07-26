@@ -119,6 +119,7 @@ class OpenRelayWebRTCEngine {
   private isMicEnabled: boolean = false;
   private currentRoomId: string = "";
   private selectedDeviceId: string = "";
+  private onVolumeCb?: (volume: number) => void;
 
   public async init(roomId: string, isTeacher: boolean): Promise<boolean> {
     this.currentRoomId = (roomId || "DEMO").toUpperCase();
@@ -137,6 +138,7 @@ class OpenRelayWebRTCEngine {
           },
           video: false,
         });
+        this.setupVolumeAnalyser(this.localStream);
       }
     } catch (err) {
       console.warn("[WebRTCVoice] Mic access error:", err);
@@ -144,6 +146,45 @@ class OpenRelayWebRTCEngine {
 
     this.bindSocketListeners();
     return true;
+  }
+
+  public onVolumeLevel(cb: (volume: number) => void) {
+    this.onVolumeCb = cb;
+  }
+
+  private setupVolumeAnalyser(stream: MediaStream) {
+    try {
+      const ctx = getGlobalAudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateVolume = () => {
+        if (!this.localStream) {
+          if (this.onVolumeCb) this.onVolumeCb(0);
+          return;
+        }
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        const volumePct = Math.min(100, Math.round((average / 128) * 100));
+
+        if (this.onVolumeCb) {
+          this.onVolumeCb(volumePct);
+        }
+        requestAnimationFrame(updateVolume);
+      };
+
+      updateVolume();
+    } catch (err) {
+      console.warn("[WebRTCVoice] Volume analyser setup notice:", err);
+    }
   }
 
   public async setAudioInputDevice(deviceId: string): Promise<boolean> {
@@ -171,6 +212,7 @@ class OpenRelayWebRTCEngine {
           },
           video: false,
         });
+        this.setupVolumeAnalyser(this.localStream);
       }
 
       if (this.localStream) {
@@ -283,12 +325,10 @@ class OpenRelayWebRTCEngine {
       const stream = event.streams[0];
       if (!stream) return;
 
-      // 1. Permanent DOM Audio Player Attachment
       const player = getOrCreateRemoteAudioPlayer();
       player.srcObject = stream;
       player.play().catch((err) => console.log("[WebRTCVoice] Player play error:", err));
 
-      // 2. Dual Pipe: Route into unlocked Web Audio API AudioContext
       try {
         const ctx = getGlobalAudioContext();
         if (ctx.state === "suspended") {
@@ -296,9 +336,7 @@ class OpenRelayWebRTCEngine {
         }
         const source = ctx.createMediaStreamSource(stream);
         source.connect(ctx.destination);
-      } catch (e) {
-        // Silent catch for duplicate stream source
-      }
+      } catch (e) {}
     };
 
     this.peerConnections[targetSocketId] = pc;
@@ -327,6 +365,7 @@ class WebAudioPCMEngine {
   private senderName: string = "Speaker";
   private selectedDeviceId: string = "";
   private nextPlayTime: number = 0;
+  private onVolumeCb?: (volume: number) => void;
 
   public async init(roomId: string, senderName: string, isTeacher: boolean): Promise<boolean> {
     this.currentRoomId = (roomId || "DEMO").toUpperCase();
@@ -342,6 +381,10 @@ class WebAudioPCMEngine {
     }
 
     return true;
+  }
+
+  public onVolumeLevel(cb: (volume: number) => void) {
+    this.onVolumeCb = cb;
   }
 
   public async setAudioInputDevice(deviceId: string): Promise<boolean> {
@@ -386,24 +429,30 @@ class WebAudioPCMEngine {
       this.audioCtx = getGlobalAudioContext();
       this.mediaSource = this.audioCtx.createMediaStreamSource(this.localStream);
 
-      // Use a 4096-sample buffer (~92ms frames at 44.1kHz) for smooth streaming
       this.scriptProcessor = this.audioCtx.createScriptProcessor(4096, 1, 1);
 
       this.scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
         if (!this.isMicEnabled) return;
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Convert Float32Array [-1.0, 1.0] to Int16Array
         const pcmSamples = new Int16Array(inputData.length);
         let hasSound = false;
+        let sum = 0;
 
         for (let i = 0; i < inputData.length; i++) {
           const s = Math.max(-1, Math.min(1, inputData[i]));
-          if (Math.abs(s) > 0.015) hasSound = true;
+          const absVal = Math.abs(s);
+          sum += absVal;
+          if (absVal > 0.015) hasSound = true;
           pcmSamples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
-        // Only emit when active speech is detected
+        const avg = sum / inputData.length;
+        const vol = Math.min(100, Math.round(avg * 200));
+        if (this.onVolumeCb) {
+          this.onVolumeCb(vol);
+        }
+
         if (hasSound) {
           socket.emit("broadcast-pcm-audio", {
             roomId: this.currentRoomId,
@@ -442,7 +491,6 @@ class WebAudioPCMEngine {
   private bindSocketListeners() {
     socket.off("receive-pcm-audio");
     socket.on("receive-pcm-audio", ({ pcmSamples, sampleRate, roomId, senderSocketId }: { pcmSamples: number[]; sampleRate: number; roomId?: string; senderSocketId?: string }) => {
-      // 1. CRITICAL SELF-AUDIO FILTER: Ignore audio sent by yourself to PREVENT REPETITIVE TRAIL VOICE!
       if (senderSocketId === socket.id) return;
       if (roomId && roomId.toUpperCase() !== this.currentRoomId) return;
       if (!pcmSamples || pcmSamples.length === 0) return;
@@ -453,7 +501,6 @@ class WebAudioPCMEngine {
           ctx.resume().catch(() => {});
         }
 
-        // Convert Int16 PCM back to Float32Array
         const float32Samples = new Float32Array(pcmSamples.length);
         for (let i = 0; i < pcmSamples.length; i++) {
           const s = pcmSamples[i];
@@ -467,10 +514,9 @@ class WebAudioPCMEngine {
         sourceNode.buffer = audioBuffer;
         sourceNode.connect(ctx.destination);
 
-        // 2. CRITICAL SAMPLE-ACCURATE TIMELINE SCHEDULER: Prevents buffer stacking & echo overlap!
         const now = ctx.currentTime;
         if (this.nextPlayTime < now) {
-          this.nextPlayTime = now + 0.02; // Small 20ms safety margin
+          this.nextPlayTime = now + 0.02;
         }
 
         sourceNode.start(this.nextPlayTime);
@@ -506,7 +552,6 @@ export class LiveKitVoiceManager {
     unlockAudioPlayer();
 
     try {
-      // 1. Attempt Connection: LiveKit Cloud (If credentials provided)
       if (wsUrl && !wsUrl.includes("demo.livekit.cloud") && token) {
         console.log("[LiveKitVoice] Connecting to LiveKit Cloud...");
         this.room = new Room({
@@ -544,7 +589,6 @@ export class LiveKitVoiceManager {
       console.warn("[LiveKitVoice] LiveKit Cloud unavailable. Activating OpenRelay WebRTC Voice Engine fallback...");
     }
 
-    // 2. Single Active Fallback Engine: OpenRelay WebRTC Engine ONLY
     console.log(`[LiveKitVoice] Initializing OpenRelay WebRTC Engine for room "${roomId}"...`);
     const okWebRTC = await this.webrtcEngine.init(roomId, isTeacher);
 
@@ -560,6 +604,11 @@ export class LiveKitVoiceManager {
 
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(this.isConnected);
     return this.isConnected;
+  }
+
+  public onLocalVolumeLevel(cb: (volume: number) => void) {
+    this.webrtcEngine.onVolumeLevel(cb);
+    this.pcmEngine.onVolumeLevel(cb);
   }
 
   public async setAudioInputDevice(deviceId: string): Promise<boolean> {

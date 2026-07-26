@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Mic, MicOff, Hand, Volume2, VolumeX, Shield, ChevronDown, ChevronUp, Radio, Settings } from "lucide-react";
+import { Mic, MicOff, Hand, Volume2, VolumeX, Shield, ChevronDown, ChevronUp, Radio, Settings, Activity } from "lucide-react";
 import { Student } from "./WaitingRoomPanel";
 import { getAudioInputDevices, livekitVoiceManager } from "../../services/livekitVoice";
 
@@ -25,6 +25,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const [volumeLevel, setVolumeLevel] = useState<number>(0);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -35,6 +36,11 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
       }
     };
     loadDevices();
+
+    // Subscribe to real-time local microphone volume analyzer
+    livekitVoiceManager.onLocalVolumeLevel((vol) => {
+      setVolumeLevel(vol);
+    });
   }, []);
 
   const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -45,6 +51,8 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
   const activeSpeaker = students.find((s) => s.id === activeSpeakerId);
   const queueStudents = students.filter((s) => raisedHands.includes(s.id));
+
+  const isSoundDetected = volumeLevel > 5;
 
   return (
     <div className="rounded-2xl bg-[#111621] border border-indigo-500/30 shadow-xl overflow-hidden font-sans">
@@ -96,6 +104,61 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
       {!isCollapsed && (
         <div className="p-4 space-y-4">
+          {/* Real-Time Microphone Input Volume Level & Animated Wave Visualizer */}
+          <div className="p-3.5 rounded-xl bg-slate-900/90 border border-indigo-500/40 space-y-2.5 shadow-inner">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                <Activity className={`w-4 h-4 ${isSoundDetected ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
+                <span>Live Microphone Input Monitor:</span>
+                <span
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                    isSoundDetected
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                      : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                  }`}
+                >
+                  {isSoundDetected
+                    ? `🎙️ REGISTERING SOUND (${volumeLevel}%)`
+                    : "⚠️ SILENT (0%) - Speak to test your mic"}
+                </span>
+              </div>
+              <span className="text-xs font-mono font-bold text-indigo-300">{volumeLevel}%</span>
+            </div>
+
+            {/* Dynamic Real-Time Volume Progress Bar & Equalizer Wave Visualizer */}
+            <div className="flex items-center gap-3">
+              {/* Progress Level Bar */}
+              <div className="flex-1 h-3 rounded-full bg-slate-800 border border-slate-700 overflow-hidden relative">
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    volumeLevel > 50
+                      ? "bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400"
+                      : volumeLevel > 15
+                      ? "bg-gradient-to-r from-emerald-600 to-emerald-400"
+                      : "bg-emerald-500/50"
+                  }`}
+                  style={{ width: `${Math.max(2, volumeLevel)}%` }}
+                ></div>
+              </div>
+
+              {/* 10 Equalizer Waveform Bars */}
+              <div className="flex items-end gap-1 h-5 shrink-0 px-1">
+                {[40, 75, 100, 60, 90, 45, 80, 100, 65, 50].map((heightPct, idx) => {
+                  const barHeight = isSoundDetected ? Math.max(15, Math.round((volumeLevel / 100) * heightPct)) : 10;
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-1 rounded-full transition-all duration-75 ${
+                        isSoundDetected ? "bg-emerald-400 shadow-sm shadow-emerald-400/50" : "bg-slate-700"
+                      }`}
+                      style={{ height: `${barHeight}%` }}
+                    ></div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           {/* Microphone Selector Bar for Teacher */}
           {audioDevices.length > 0 && (
             <div className="p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between gap-3 text-xs">

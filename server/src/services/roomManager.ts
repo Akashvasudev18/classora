@@ -23,6 +23,8 @@ export interface Room {
   pendingStudents: Student[];
   editorContent: string;
   activePractice: PracticeProblem | null;
+  raisedHands: string[]; // List of student IDs who raised their hand
+  activeSpeakerId: string | null; // Currently approved student speaker ID (Max 1)
 }
 
 export class RoomManager {
@@ -36,6 +38,8 @@ export class RoomManager {
       pendingStudents: [],
       editorContent: "# Welcome to Classora Live Python Classroom!\n# Teacher's live Python code will appear here in real-time.\n\ndef classora_session():\n    print('Learn Together. Live.')\n",
       activePractice: null,
+      raisedHands: [],
+      activeSpeakerId: null,
     };
     this.rooms[roomId] = room;
     return room;
@@ -141,6 +145,57 @@ export class RoomManager {
     return true;
   }
 
+  // Voice Permissions Management
+  public raiseHand(roomId: string, studentId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+
+    if (!room.raisedHands.includes(studentId)) {
+      room.raisedHands.push(studentId);
+    }
+    return true;
+  }
+
+  public lowerHand(roomId: string, studentId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+
+    room.raisedHands = room.raisedHands.filter(id => id !== studentId);
+    return true;
+  }
+
+  public allowSpeaker(roomId: string, studentId: string): { success: boolean; previousSpeakerId: string | null } {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, previousSpeakerId: null };
+
+    const previousSpeakerId = room.activeSpeakerId;
+    room.activeSpeakerId = studentId;
+
+    // Remove from raised hands queue
+    room.raisedHands = room.raisedHands.filter(id => id !== studentId);
+
+    return { success: true, previousSpeakerId };
+  }
+
+  public removeSpeaker(roomId: string, studentId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+
+    if (room.activeSpeakerId === studentId) {
+      room.activeSpeakerId = null;
+    }
+    return true;
+  }
+
+  public muteAllStudents(roomId: string): boolean {
+    const room = this.rooms[roomId];
+    if (!room) return false;
+
+    room.activeSpeakerId = null;
+    room.raisedHands = [];
+    return true;
+  }
+
   // Handle socket disconnection (cleans up pending & active students, or teacher)
   public handleDisconnect(socketId: string): { roomId: string; isTeacher: boolean; studentName?: string }[] {
     const affectedRooms: { roomId: string; isTeacher: boolean; studentName?: string }[] = [];
@@ -155,6 +210,10 @@ export class RoomManager {
       const activeIndex = room.students.findIndex(s => s.socketId === socketId);
       if (activeIndex !== -1) {
         const [student] = room.students.splice(activeIndex, 1);
+        room.raisedHands = room.raisedHands.filter(id => id !== student.id);
+        if (room.activeSpeakerId === student.id) {
+          room.activeSpeakerId = null;
+        }
         affectedRooms.push({ roomId, isTeacher: false, studentName: student.name });
       }
 

@@ -8,6 +8,7 @@ import { roomManager } from "./services/roomManager.js";
 import { executePythonCode } from "./services/executionService.js";
 import { AIService } from "./services/aiService.js";
 import { AIProgressService } from "./services/aiProgressService.js";
+import { LiveKitService } from "./services/livekitService.js";
 
 // Load environment variables
 dotenv.config();
@@ -73,6 +74,31 @@ app.get("/api/health", (_req, res) => {
     port: PORT,
     timestamp: new Date().toISOString(),
   });
+});
+
+// LiveKit Token Generator Endpoint (Voice Communication)
+app.get("/api/livekit/token", async (req, res) => {
+  try {
+    const roomId = (req.query.roomId as string) || "DEMO";
+    const identity = (req.query.identity as string) || "User";
+    const isTeacher = req.query.isTeacher === "true";
+
+    const result = await LiveKitService.generateToken(roomId, identity, isTeacher);
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(500).json(result);
+    }
+  } catch (err: any) {
+    console.error(`[Express] LiveKit token route error:`, err);
+    return res.status(500).json({
+      success: false,
+      token: "",
+      wsUrl: "",
+      error: err.toString(),
+    });
+  }
 });
 
 // Rooms Debug Endpoint
@@ -198,6 +224,7 @@ httpServer.listen(PORT, () => {
   console.log(`=================================`);
   console.log(`🚀 Classora Backend Server running on port ${PORT}`);
   console.log(`⚡ Socket.IO transports: ["websocket", "polling"]`);
+  console.log(`🎙️ LiveKit Voice API: GET /api/livekit/token`);
   console.log(`🤖 AI Engine Configured: YES (Groq / OpenRouter)`);
   console.log(`🔒 Allowed Origins: ${rawOrigins}`);
   console.log(`=================================`);

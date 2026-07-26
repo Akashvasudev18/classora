@@ -5,6 +5,7 @@ import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
 import { analyzeClassProgress, StudentAnalysisResult } from "../services/AIProgressService";
+import { fetchLiveKitToken, livekitVoiceManager } from "../services/livekitVoice";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { WaitingRoomPanel, Student } from "../components/classroom/WaitingRoomPanel";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
@@ -12,6 +13,7 @@ import { LiveEditor } from "../components/classroom/LiveEditor";
 import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
 import { StudentCodeModal } from "../components/classroom/StudentCodeModal";
 import { StudentProgressDashboard } from "../components/classroom/StudentProgressDashboard";
+import { VoiceControlPanel } from "../components/classroom/VoiceControlPanel";
 import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
@@ -47,14 +49,37 @@ export const HostDashboard: React.FC = () => {
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | undefined>(undefined);
   const [analysisModelUsed, setAnalysisModelUsed] = useState<string | undefined>(undefined);
 
+  // Voice Communication & Permissions State (LiveKit Cloud)
+  const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
+  const [raisedHands, setRaisedHands] = useState<string[]>([]);
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!currentRoomId) return;
+
+    // Connect Teacher LiveKit Cloud Voice
+    const initVoice = async () => {
+      console.log(`[HostDashboard] Requesting LiveKit voice token for room ${currentRoomId}...`);
+      const tokenRes = await fetchLiveKitToken(currentRoomId, "Teacher", true);
+      if (tokenRes.success && tokenRes.token) {
+        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, true);
+        setIsVoiceConnected(ok);
+      }
+    };
+
+    initVoice();
+
+    livekitVoiceManager.onConnectionStateChange((connected) => {
+      setIsVoiceConnected(connected);
+    });
 
     const claimHostRoom = () => {
       realtimeBus.emit("host-room", { roomId: currentRoomId }, (res: any) => {
         if (res && res.roomState) {
           setStudents([...(res.roomState.students || [])]);
           setPendingStudents([...(res.roomState.pendingStudents || [])]);
+          setRaisedHands([...(res.roomState.raisedHands || [])]);
+          setActiveSpeakerId(res.roomState.activeSpeakerId || null);
           if (res.roomState.editorContent) {
             setEditorContent(res.roomState.editorContent);
           }
@@ -68,13 +93,15 @@ export const HostDashboard: React.FC = () => {
     claimHostRoom();
     socket.on("connect", claimHostRoom);
 
-    // 2-second heartbeat poll to ensure host state is 100% synced with Render server
+    // 2-second heartbeat poll to ensure host state is 100% synced with server
     const heartbeatInterval = setInterval(() => {
       if (socket.connected) {
         socket.emit("get-room-state", { roomId: currentRoomId }, (res: any) => {
           if (res && res.roomState) {
             setPendingStudents([...(res.roomState.pendingStudents || [])]);
             setStudents([...(res.roomState.students || [])]);
+            setRaisedHands([...(res.roomState.raisedHands || [])]);
+            setActiveSpeakerId(res.roomState.activeSpeakerId || null);
             if (res.roomState.activePractice !== undefined) {
               setActivePractice(res.roomState.activePractice);
             }
@@ -110,6 +137,18 @@ export const HostDashboard: React.FC = () => {
       if (data?.pendingStudents !== undefined) {
         setPendingStudents([...data.pendingStudents]);
       }
+      if (data?.raisedHands !== undefined) {
+        setRaisedHands([...data.raisedHands]);
+      }
+      if (data?.activeSpeakerId !== undefined) {
+        setActiveSpeakerId(data.activeSpeakerId);
+      }
+    };
+
+    const handleVoiceStateUpdate = (data: { roomId: string; raisedHands: string[]; activeSpeakerId: string | null }) => {
+      if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      setRaisedHands([...(data.raisedHands || [])]);
+      setActiveSpeakerId(data.activeSpeakerId || null);
     };
 
     const handleExecutionResult = (data: ExecutionResult) => {
@@ -129,16 +168,19 @@ export const HostDashboard: React.FC = () => {
     realtimeBus.on("update-pending", handleUpdatePending);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
+    realtimeBus.on("voice-state-update", handleVoiceStateUpdate);
     realtimeBus.on("execution-result", handleExecutionResult);
     realtimeBus.on("receive-student-code", handleReceiveStudentCode);
 
     return () => {
       clearInterval(heartbeatInterval);
+      livekitVoiceManager.disconnect();
       socket.off("connect", claimHostRoom);
       realtimeBus.off("join-request", handleJoinRequest);
       realtimeBus.off("update-pending", handleUpdatePending);
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
+      realtimeBus.off("voice-state-update", handleVoiceStateUpdate);
       realtimeBus.off("execution-result", handleExecutionResult);
       realtimeBus.off("receive-student-code", handleReceiveStudentCode);
     };
@@ -177,6 +219,22 @@ export const HostDashboard: React.FC = () => {
 
   const handleClearTerminal = () => {
     setExecutionResult(null);
+  };
+
+  // Voice Permissions Handlers
+  const handleAllowSpeaker = (studentId: string) => {
+    console.log(`[HostDashboard] Allowing student ${studentId} to speak`);
+    realtimeBus.emit("teacher-allow-speaker", { roomId: currentRoomId, studentId });
+  };
+
+  const handleRemoveSpeaker = (studentId: string) => {
+    console.log(`[HostDashboard] Removing speaker permission for student ${studentId}`);
+    realtimeBus.emit("teacher-remove-speaker", { roomId: currentRoomId, studentId });
+  };
+
+  const handleMuteAll = () => {
+    console.log(`[HostDashboard] Muting all students`);
+    realtimeBus.emit("mute-all", { roomId: currentRoomId });
   };
 
   // Practice Session Handlers
@@ -225,7 +283,7 @@ export const HostDashboard: React.FC = () => {
     });
   };
 
-  // AI Class Progress Analysis Trigger (Fetches live student practice code directly from backend room memory)
+  // AI Class Progress Analysis Trigger
   const handleAnalyzeClassProgress = async () => {
     if (isAnalyzingClass || students.length === 0) return;
 
@@ -247,6 +305,7 @@ export const HostDashboard: React.FC = () => {
 
   const handleEndClass = () => {
     if (window.confirm("Are you sure you want to end this class? All connected students will be redirected.")) {
+      livekitVoiceManager.disconnect();
       realtimeBus.emit("end-room", { roomId: currentRoomId });
       navigate("/");
     }
@@ -341,6 +400,17 @@ export const HostDashboard: React.FC = () => {
 
       {/* Main Container */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+        {/* Voice Communication & Control Panel (Teacher) */}
+        <VoiceControlPanel
+          students={students}
+          raisedHands={raisedHands}
+          activeSpeakerId={activeSpeakerId}
+          onAllowSpeaker={handleAllowSpeaker}
+          onRemoveSpeaker={handleRemoveSpeaker}
+          onMuteAll={handleMuteAll}
+          isVoiceConnected={isVoiceConnected}
+        />
+
         {/* Mobile Urgent Pending Alert Banner */}
         {pendingStudents.length > 0 && (
           <div className="lg:hidden p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-between shadow-lg animate-pulse">
@@ -393,6 +463,8 @@ export const HostDashboard: React.FC = () => {
               roomCode={currentRoomId}
               isHost={true}
               onSelectStudent={handleInspectStudent}
+              raisedHands={raisedHands}
+              activeSpeakerId={activeSpeakerId}
             />
           </div>
 

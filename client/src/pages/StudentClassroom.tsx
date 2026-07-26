@@ -5,6 +5,7 @@ import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
 import { requestAIHint, HintResponseResult } from "../services/AIService";
+import { fetchLiveKitToken, livekitVoiceManager } from "../services/livekitVoice";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { LiveEditor } from "../components/classroom/LiveEditor";
@@ -12,6 +13,7 @@ import { PracticeEditor } from "../components/classroom/PracticeEditor";
 import { ResizableSplitLayout } from "../components/classroom/ResizableSplitLayout";
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { ProblemPanel } from "../components/classroom/ProblemPanel";
+import { StudentVoicePanel } from "../components/classroom/StudentVoicePanel";
 import { Student } from "../components/classroom/WaitingRoomPanel";
 import { PracticeProblem } from "../shared/problems";
 
@@ -43,6 +45,13 @@ export const StudentClassroom: React.FC = () => {
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
   const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
 
+  // Voice Communication & Permissions State (LiveKit Cloud)
+  const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
+  const [hasHandRaised, setHasHandRaised] = useState<boolean>(false);
+  const [isSpeakingPermitted, setIsSpeakingPermitted] = useState<boolean>(false);
+  const [raisedHands, setRaisedHands] = useState<string[]>([]);
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
+
   // OpenRouter AI Hint State
   const [hintResult, setHintResult] = useState<HintResponseResult | null>(null);
   const [isRequestingHint, setIsRequestingHint] = useState<boolean>(false);
@@ -67,6 +76,20 @@ export const StudentClassroom: React.FC = () => {
   useEffect(() => {
     if (!currentRoomId) return;
 
+    // Connect LiveKit Cloud Voice on Student Approval
+    const initVoice = async () => {
+      console.log(`[StudentClassroom] Requesting LiveKit voice token for room ${currentRoomId} as "${studentName}"...`);
+      const tokenRes = await fetchLiveKitToken(currentRoomId, studentName, false);
+      if (tokenRes.success && tokenRes.token) {
+        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, false);
+        setIsVoiceConnected(ok);
+      }
+    };
+
+    livekitVoiceManager.onConnectionStateChange((connected) => {
+      setIsVoiceConnected(connected);
+    });
+
     const emitJoinRequest = () => {
       realtimeBus.emit(
         "join-request",
@@ -90,6 +113,8 @@ export const StudentClassroom: React.FC = () => {
       if (data.studentId && data.studentId !== studentId) return;
       console.log(`[StudentClassroom] Approved by host for room ${currentRoomId}`);
       setStatus("approved");
+      initVoice();
+
       if (data.editorContent !== undefined) {
         setEditorContent(data.editorContent);
       }
@@ -115,9 +140,55 @@ export const StudentClassroom: React.FC = () => {
       setEditorContent(data.content);
     };
 
-    const handleStudentConnected = (data: { students: Student[]; roomId?: string }) => {
+    const handleStudentConnected = (data: { students: Student[]; roomId?: string; raisedHands?: string[]; activeSpeakerId?: string | null }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       setStudents([...(data.students || [])]);
+      if (data.raisedHands !== undefined) {
+        setRaisedHands([...data.raisedHands]);
+        setHasHandRaised(data.raisedHands.includes(studentId));
+      }
+      if (data.activeSpeakerId !== undefined) {
+        setActiveSpeakerId(data.activeSpeakerId);
+        setIsSpeakingPermitted(data.activeSpeakerId === studentId);
+      }
+    };
+
+    // Voice Communication & Permission Event Handlers
+    const handleVoiceStateUpdate = (data: { roomId: string; raisedHands: string[]; activeSpeakerId: string | null }) => {
+      if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      setRaisedHands([...(data.raisedHands || [])]);
+      setActiveSpeakerId(data.activeSpeakerId || null);
+
+      const amISpeaking = data.activeSpeakerId === studentId;
+      setIsSpeakingPermitted(amISpeaking);
+      if (amISpeaking) {
+        setHasHandRaised(false);
+        livekitVoiceManager.setMicrophoneEnabled(true);
+      } else {
+        livekitVoiceManager.setMicrophoneEnabled(false);
+      }
+      setHasHandRaised(data.raisedHands.includes(studentId));
+    };
+
+    const handleSpeakerPermissionGranted = () => {
+      console.log("[StudentClassroom] Speaker permission GRANTED by teacher! Unmuting microphone...");
+      setIsSpeakingPermitted(true);
+      setHasHandRaised(false);
+      livekitVoiceManager.setMicrophoneEnabled(true);
+    };
+
+    const handleSpeakerPermissionRevoked = () => {
+      console.log("[StudentClassroom] Speaker permission REVOKED by teacher. Muting microphone...");
+      setIsSpeakingPermitted(false);
+      setHasHandRaised(false);
+      livekitVoiceManager.setMicrophoneEnabled(false);
+    };
+
+    const handleAllStudentsMuted = () => {
+      console.log("[StudentClassroom] Teacher muted ALL students. Muting microphone...");
+      setIsSpeakingPermitted(false);
+      setHasHandRaised(false);
+      livekitVoiceManager.setMicrophoneEnabled(false);
     };
 
     const handleExecutionResult = (data: ExecutionResult) => {
@@ -170,11 +241,13 @@ export const StudentClassroom: React.FC = () => {
 
     const handleRoomEnded = (data: { roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
+      livekitVoiceManager.disconnect();
       setStatus("ended");
       navigate("/class-ended");
     };
 
     const handleTeacherDisconnected = () => {
+      livekitVoiceManager.disconnect();
       navigate("/error", {
         state: { type: "teacher-disconnected", message: "The teacher disconnected from the classroom." },
       });
@@ -185,6 +258,10 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("editor-update", handleEditorUpdate);
     realtimeBus.on("student-connected", handleStudentConnected);
     realtimeBus.on("student-disconnected", handleStudentConnected);
+    realtimeBus.on("voice-state-update", handleVoiceStateUpdate);
+    realtimeBus.on("speaker-permission-granted", handleSpeakerPermissionGranted);
+    realtimeBus.on("speaker-permission-revoked", handleSpeakerPermissionRevoked);
+    realtimeBus.on("all-students-muted", handleAllStudentsMuted);
     realtimeBus.on("execution-result", handleExecutionResult);
     realtimeBus.on("practice-started", handlePracticeStarted);
     realtimeBus.on("receive-practice", handlePracticeStarted);
@@ -195,12 +272,17 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
 
     return () => {
+      livekitVoiceManager.disconnect();
       socket.off("connect", emitJoinRequest);
       realtimeBus.off("student-approved", handleStudentApproved);
       realtimeBus.off("student-rejected", handleStudentRejected);
       realtimeBus.off("editor-update", handleEditorUpdate);
       realtimeBus.off("student-connected", handleStudentConnected);
       realtimeBus.off("student-disconnected", handleStudentConnected);
+      realtimeBus.off("voice-state-update", handleVoiceStateUpdate);
+      realtimeBus.off("speaker-permission-granted", handleSpeakerPermissionGranted);
+      realtimeBus.off("speaker-permission-revoked", handleSpeakerPermissionRevoked);
+      realtimeBus.off("all-students-muted", handleAllStudentsMuted);
       realtimeBus.off("execution-result", handleExecutionResult);
       realtimeBus.off("practice-started", handlePracticeStarted);
       realtimeBus.off("receive-practice", handlePracticeStarted);
@@ -260,6 +342,19 @@ export const StudentClassroom: React.FC = () => {
 
     setIsRequestingHint(false);
     setHintResult(result);
+  };
+
+  // Student Raise / Lower Hand Handlers
+  const handleRaiseHand = () => {
+    console.log("[StudentClassroom] Raising hand...");
+    setHasHandRaised(true);
+    realtimeBus.emit("raise-hand", { roomId: currentRoomId, studentId });
+  };
+
+  const handleLowerHand = () => {
+    console.log("[StudentClassroom] Lowering hand...");
+    setHasHandRaised(false);
+    realtimeBus.emit("lower-hand", { roomId: currentRoomId, studentId });
   };
 
   if (status === "pending") {
@@ -322,7 +417,10 @@ export const StudentClassroom: React.FC = () => {
       <header className="px-4 md:px-6 py-3.5 border-b border-slate-800/80 bg-[#111621]/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shadow-lg">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              livekitVoiceManager.disconnect();
+              navigate("/");
+            }}
             className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700/50 cursor-pointer"
             title="Leave Classroom"
           >
@@ -378,7 +476,10 @@ export const StudentClassroom: React.FC = () => {
           <StatusBadge status={socketConnectionStatus} isConnected={isConnected} />
 
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              livekitVoiceManager.disconnect();
+              navigate("/");
+            }}
             className="px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white font-semibold text-xs border border-rose-500/30 transition-all flex items-center gap-2 cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
@@ -388,75 +489,88 @@ export const StudentClassroom: React.FC = () => {
       </header>
 
       {/* Main Container Layout */}
-      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Main Workspace Area (3 Columns or Full Width when Practice Enabled) */}
-        <div className="lg:col-span-3 flex flex-col space-y-4 min-w-0">
-          {!isPracticeEnabled ? (
-            /* Single Full-Width Teacher Broadcast View (Default OFF) */
-            <LiveEditor
-              value={editorContent}
-              isHost={false}
-              isExecuting={isExecuting}
-              executionResult={executionResult}
-              onClearTerminal={handleClearTeacherTerminal}
-              stdin={executionResult?.stdin || ""}
-            />
-          ) : (
-            /* Resizable Split-Screen View (When Practice ON) */
-            <ResizableSplitLayout
-              left={
-                <LiveEditor
-                  value={editorContent}
-                  isHost={false}
-                  isExecuting={isExecuting}
-                  executionResult={executionResult}
-                  onClearTerminal={handleClearTeacherTerminal}
-                  stdin={executionResult?.stdin || ""}
-                />
-              }
-              right={
-                <div className="space-y-4 flex flex-col flex-1">
-                  {/* Problem Panel (Rendered when activePractice session is running) */}
-                  {activePractice && (
-                    <ProblemPanel
-                      problem={activePractice}
-                      onUseExampleInput={(input) => setPracticeStdin(input)}
-                      isSessionEnded={isSessionEnded}
-                    />
-                  )}
+      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-4">
+        {/* Student Voice Control & Raised Hand Banner */}
+        <StudentVoicePanel
+          hasHandRaised={hasHandRaised}
+          isSpeakingPermitted={isSpeakingPermitted}
+          onRaiseHand={handleRaiseHand}
+          onLowerHand={handleLowerHand}
+          isVoiceConnected={isVoiceConnected}
+        />
 
-                  {/* Student Practice Editor */}
-                  <PracticeEditor
-                    value={practiceCode}
-                    onChange={setPracticeCode}
-                    onFork={handleForkTeacherCode}
-                    onRun={handleRunPracticeCode}
-                    isExecuting={isPracticeExecuting}
-                    executionResult={practiceResult}
-                    onClearTerminal={handleClearPracticeTerminal}
-                    stdin={practiceStdin}
-                    onChangeStdin={setPracticeStdin}
-                    onGetHint={handleGetAIHint}
-                    isRequestingHint={isRequestingHint}
-                    hintResult={hintResult}
-                    isHintPanelOpen={isHintPanelOpen}
-                    onToggleHintPanel={() => setIsHintPanelOpen((prev) => !prev)}
-                    onCloseHintPanel={() => setIsHintPanelOpen(false)}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Workspace Area (3 Columns or Full Width when Practice Enabled) */}
+          <div className="lg:col-span-3 flex flex-col space-y-4 min-w-0">
+            {!isPracticeEnabled ? (
+              /* Single Full-Width Teacher Broadcast View (Default OFF) */
+              <LiveEditor
+                value={editorContent}
+                isHost={false}
+                isExecuting={isExecuting}
+                executionResult={executionResult}
+                onClearTerminal={handleClearTeacherTerminal}
+                stdin={executionResult?.stdin || ""}
+              />
+            ) : (
+              /* Resizable Split-Screen View (When Practice ON) */
+              <ResizableSplitLayout
+                left={
+                  <LiveEditor
+                    value={editorContent}
+                    isHost={false}
+                    isExecuting={isExecuting}
+                    executionResult={executionResult}
+                    onClearTerminal={handleClearTeacherTerminal}
+                    stdin={executionResult?.stdin || ""}
                   />
-                </div>
-              }
-            />
-          )}
-        </div>
+                }
+                right={
+                  <div className="space-y-4 flex flex-col flex-1">
+                    {/* Problem Panel (Rendered when activePractice session is running) */}
+                    {activePractice && (
+                      <ProblemPanel
+                        problem={activePractice}
+                        onUseExampleInput={(input) => setPracticeStdin(input)}
+                        isSessionEnded={isSessionEnded}
+                      />
+                    )}
 
-        {/* Rightmost Sidebar: Connected Students List */}
-        <div className="space-y-6 flex flex-col min-w-0">
-          <StudentListPanel
-            students={students}
-            currentStudentName={studentName}
-            roomCode={currentRoomId}
-            isHost={false}
-          />
+                    {/* Student Practice Editor */}
+                    <PracticeEditor
+                      value={practiceCode}
+                      onChange={setPracticeCode}
+                      onFork={handleForkTeacherCode}
+                      onRun={handleRunPracticeCode}
+                      isExecuting={isPracticeExecuting}
+                      executionResult={practiceResult}
+                      onClearTerminal={handleClearPracticeTerminal}
+                      stdin={practiceStdin}
+                      onChangeStdin={setPracticeStdin}
+                      onGetHint={handleGetAIHint}
+                      isRequestingHint={isRequestingHint}
+                      hintResult={hintResult}
+                      isHintPanelOpen={isHintPanelOpen}
+                      onToggleHintPanel={() => setIsHintPanelOpen((prev) => !prev)}
+                      onCloseHintPanel={() => setIsHintPanelOpen(false)}
+                    />
+                  </div>
+                }
+              />
+            )}
+          </div>
+
+          {/* Rightmost Sidebar: Connected Students List */}
+          <div className="space-y-6 flex flex-col min-w-0">
+            <StudentListPanel
+              students={students}
+              currentStudentName={studentName}
+              roomCode={currentRoomId}
+              isHost={false}
+              raisedHands={raisedHands}
+              activeSpeakerId={activeSpeakerId}
+            />
+          </div>
         </div>
       </div>
     </div>

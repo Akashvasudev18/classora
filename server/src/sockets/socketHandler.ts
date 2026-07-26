@@ -125,6 +125,8 @@ export const setupSocketHandlers = (io: Server) => {
           students: room.students,
           pendingStudents: room.pendingStudents,
           count: room.students.length,
+          raisedHands: room.raisedHands,
+          activeSpeakerId: room.activeSpeakerId,
         });
       }
     });
@@ -210,7 +212,108 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.updateStudentPracticeState(cleanRoomId, studentId, code, terminalResult);
     });
 
-    // 8. Teacher Student Code Inspection & Live Assistance Events
+    // 8. Voice Communication & Permissions Events (Raise Hand / Allow Speaker / Mute All)
+    socket.on("raise-hand", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      roomManager.raiseHand(cleanRoomId, studentId);
+      const room = roomManager.getRoom(cleanRoomId);
+
+      console.log(`[Voice] Student ${studentId} raised hand in room ${cleanRoomId}`);
+
+      io.to(cleanRoomId).emit("voice-state-update", {
+        roomId: cleanRoomId,
+        raisedHands: room?.raisedHands || [],
+        activeSpeakerId: room?.activeSpeakerId || null,
+      });
+    });
+
+    socket.on("lower-hand", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      roomManager.lowerHand(cleanRoomId, studentId);
+      const room = roomManager.getRoom(cleanRoomId);
+
+      console.log(`[Voice] Student ${studentId} lowered hand in room ${cleanRoomId}`);
+
+      io.to(cleanRoomId).emit("voice-state-update", {
+        roomId: cleanRoomId,
+        raisedHands: room?.raisedHands || [],
+        activeSpeakerId: room?.activeSpeakerId || null,
+      });
+    });
+
+    socket.on("teacher-allow-speaker", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const { previousSpeakerId } = roomManager.allowSpeaker(cleanRoomId, studentId);
+      const room = roomManager.getRoom(cleanRoomId);
+
+      console.log(`[Voice] Teacher approved student ${studentId} to speak in ${cleanRoomId} (Muted previous: ${previousSpeakerId})`);
+
+      io.to(cleanRoomId).emit("voice-state-update", {
+        roomId: cleanRoomId,
+        raisedHands: room?.raisedHands || [],
+        activeSpeakerId: studentId,
+        previousSpeakerId,
+      });
+
+      // Notify the newly approved student specifically
+      const newSpeaker = room?.students.find(s => s.id === studentId || s.socketId === studentId);
+      if (newSpeaker) {
+        io.to(newSpeaker.socketId).emit("speaker-permission-granted", { roomId: cleanRoomId });
+      }
+
+      // Mute the previous speaker if one existed
+      if (previousSpeakerId) {
+        const prevSpeaker = room?.students.find(s => s.id === previousSpeakerId || s.socketId === previousSpeakerId);
+        if (prevSpeaker) {
+          io.to(prevSpeaker.socketId).emit("speaker-permission-revoked", { roomId: cleanRoomId });
+        }
+      }
+    });
+
+    socket.on("teacher-remove-speaker", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      roomManager.removeSpeaker(cleanRoomId, studentId);
+      const room = roomManager.getRoom(cleanRoomId);
+
+      console.log(`[Voice] Teacher muted student ${studentId} in ${cleanRoomId}`);
+
+      const targetStudent = room?.students.find(s => s.id === studentId || s.socketId === studentId);
+      if (targetStudent) {
+        io.to(targetStudent.socketId).emit("speaker-permission-revoked", { roomId: cleanRoomId });
+      }
+
+      io.to(cleanRoomId).emit("voice-state-update", {
+        roomId: cleanRoomId,
+        raisedHands: room?.raisedHands || [],
+        activeSpeakerId: room?.activeSpeakerId || null,
+      });
+    });
+
+    socket.on("mute-all", ({ roomId }: { roomId: string }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      const room = roomManager.getRoom(cleanRoomId);
+      const currentSpeakerId = room?.activeSpeakerId;
+
+      if (currentSpeakerId) {
+        const activeStudent = room?.students.find(s => s.id === currentSpeakerId || s.socketId === currentSpeakerId);
+        if (activeStudent) {
+          io.to(activeStudent.socketId).emit("speaker-permission-revoked", { roomId: cleanRoomId });
+        }
+      }
+
+      roomManager.muteAllStudents(cleanRoomId);
+
+      console.log(`[Voice] Teacher muted ALL students in ${cleanRoomId}`);
+
+      io.to(cleanRoomId).emit("all-students-muted", { roomId: cleanRoomId });
+      io.to(cleanRoomId).emit("voice-state-update", {
+        roomId: cleanRoomId,
+        raisedHands: [],
+        activeSpeakerId: null,
+      });
+    });
+
+    // 9. Teacher Student Code Inspection & Live Assistance Events
     socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       const room = roomManager.getRoom(cleanRoomId);
@@ -266,7 +369,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 9. Code Execution Socket Event with stdin support
+    // 10. Code Execution Socket Event with stdin support
     socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
@@ -289,7 +392,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 10. End Room Event (Purges memory & notifies everyone)
+    // 11. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -303,7 +406,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 11. Handle Disconnection & Memory Cleanup
+    // 12. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);
@@ -324,6 +427,8 @@ export const setupSocketHandlers = (io: Server) => {
               students: room.students,
               pendingStudents: room.pendingStudents,
               count: room.students.length,
+              raisedHands: room.raisedHands,
+              activeSpeakerId: room.activeSpeakerId,
             });
           }
         }

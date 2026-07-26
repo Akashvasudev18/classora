@@ -510,24 +510,26 @@ export const StudentClassroom: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Container Layout */}
-      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 md:p-6 space-y-4">
-        {/* Student Voice Control & Raised Hand Banner */}
-        <StudentVoicePanel
-          hasHandRaised={hasHandRaised}
-          isSpeakingPermitted={isSpeakingPermitted}
-          onRaiseHand={handleRaiseHand}
-          onLowerHand={handleLowerHand}
-          isVoiceConnected={isVoiceConnected}
-          onConnectTeacherAudio={handleConnectTeacherAudio}
-          isListeningToTeacher={isListeningToTeacher}
-        />
+      {/* Main Container - Discord-Inspired 3-Column Professional Workspace */}
+      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-col lg:flex-row gap-5 min-w-0 overflow-x-hidden">
+        {/* LEFT SIDEBAR: Discord-like Audio Control & Raised Hand Panel */}
+        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
+          <StudentVoicePanel
+            hasHandRaised={hasHandRaised}
+            isSpeakingPermitted={isSpeakingPermitted}
+            onRaiseHand={handleRaiseHand}
+            onLowerHand={handleLowerHand}
+            isVoiceConnected={isVoiceConnected}
+            onConnectTeacherAudio={handleConnectTeacherAudio}
+            isListeningToTeacher={isListeningToTeacher}
+          />
+        </aside>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Workspace Area (3 Columns or Full Width when Practice Enabled) */}
-          <div className="lg:col-span-3 flex flex-col space-y-4 min-w-0">
-            {!isPracticeEnabled ? (
-              /* Single Full-Width Teacher Broadcast View (Default OFF) */
+        {/* CENTER COLUMN: Main Workspace Area (Centered & Full Width Code Editors) */}
+        <main className="flex-1 min-w-0 flex flex-col space-y-4 overflow-y-auto">
+          {!isPracticeEnabled ? (
+            /* Single Full-Width Teacher Broadcast View (Default OFF) */
+            <div className="flex-1 flex flex-col min-h-0">
               <LiveEditor
                 value={editorContent}
                 isHost={false}
@@ -536,8 +538,10 @@ export const StudentClassroom: React.FC = () => {
                 onClearTerminal={handleClearTeacherTerminal}
                 stdin={executionResult?.stdin || ""}
               />
-            ) : (
-              /* Resizable Split-Screen View (When Practice ON) */
+            </div>
+          ) : (
+            /* Resizable Split-Screen View (When Practice ON) */
+            <div className="flex-1 flex flex-col min-h-0">
               <ResizableSplitLayout
                 left={
                   <LiveEditor
@@ -581,21 +585,21 @@ export const StudentClassroom: React.FC = () => {
                   </div>
                 }
               />
-            )}
-          </div>
+            </div>
+          )}
+        </main>
 
-          {/* Rightmost Sidebar: Connected Students List */}
-          <div className="space-y-6 flex flex-col min-w-0">
-            <StudentListPanel
-              students={students}
-              currentStudentName={studentName}
-              roomCode={currentRoomId}
-              isHost={false}
-              raisedHands={raisedHands}
-              activeSpeakerId={activeSpeakerId}
-            />
-          </div>
-        </div>
+        {/* RIGHT SIDEBAR: Connected Students List */}
+        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
+          <StudentListPanel
+            students={students}
+            currentStudentName={studentName}
+            roomCode={currentRoomId}
+            isHost={false}
+            raisedHands={raisedHands}
+            activeSpeakerId={activeSpeakerId}
+          />
+        </aside>
       </div>
     </div>
   );

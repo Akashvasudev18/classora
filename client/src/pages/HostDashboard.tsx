@@ -439,78 +439,51 @@ export const HostDashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Container */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
-        {/* Voice Communication & Control Panel (Teacher) */}
-        <VoiceControlPanel
-          students={students}
-          raisedHands={raisedHands}
-          activeSpeakerId={activeSpeakerId}
-          onAllowSpeaker={handleAllowSpeaker}
-          onRemoveSpeaker={handleRemoveSpeaker}
-          onMuteAll={handleMuteAll}
-          isVoiceConnected={isVoiceConnected}
-        />
+      {/* Main Container - Discord-Inspired 3-Column Professional Workspace */}
+      <div className="flex-1 max-w-[1750px] w-full mx-auto p-3 md:p-5 flex flex-col lg:flex-row gap-5 min-w-0 overflow-x-hidden">
+        {/* LEFT SIDEBAR: Discord-like Compact Voice Control Panel */}
+        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
+          <VoiceControlPanel
+            students={students}
+            raisedHands={raisedHands}
+            activeSpeakerId={activeSpeakerId}
+            onAllowSpeaker={handleAllowSpeaker}
+            onRemoveSpeaker={handleRemoveSpeaker}
+            onMuteAll={handleMuteAll}
+            isVoiceConnected={isVoiceConnected}
+          />
+        </aside>
 
-        {/* Mobile Urgent Pending Alert Banner */}
-        {pendingStudents.length > 0 && (
-          <div className="lg:hidden p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-between shadow-lg animate-pulse">
-            <div className="flex items-center gap-2.5">
-              <UserPlus className="w-5 h-5 text-amber-400 shrink-0" />
-              <div>
-                <div className="text-xs font-bold">{pendingStudents.length} Pending Join Request(s)</div>
-                <div className="text-[10px] text-amber-400/80">Review requests below before starting lesson</div>
+        {/* CENTER COLUMN: Main Coding & Practice Workspace (Centered & Full Height) */}
+        <main className="flex-1 min-w-0 flex flex-col space-y-4 overflow-y-auto">
+          {/* Mobile Urgent Pending Alert Banner */}
+          {pendingStudents.length > 0 && (
+            <div className="lg:hidden p-3 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-between shadow-lg animate-pulse">
+              <div className="flex items-center gap-2.5">
+                <UserPlus className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <div className="text-xs font-bold">{pendingStudents.length} Pending Join Request(s)</div>
+                  <div className="text-[10px] text-amber-400/80">Review requests in right sidebar</div>
+                </div>
               </div>
             </div>
-            <a
-              href="#waiting-room"
-              className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow hover:bg-amber-400 transition-colors"
-            >
-              Review
-            </a>
-          </div>
-        )}
+          )}
 
-        {/* AI Student Progress Dashboard Panel (Rendered when Practice Session is Active) */}
-        {activePractice && (
-          <StudentProgressDashboard
-            analysisResults={analysisResults}
-            isLoading={isAnalyzingClass}
-            onAnalyzeClass={handleAnalyzeClassProgress}
-            onInspectStudent={handleInspectStudent}
-            lastAnalyzedAt={lastAnalyzedAt}
-            modelUsed={analysisModelUsed}
-            studentsList={students}
-          />
-        )}
-
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Waiting Room & Connected Students Column */}
-          <div
-            id="waiting-room"
-            className={`space-y-6 flex flex-col ${
-              pendingStudents.length > 0 ? "order-first lg:order-last" : "order-last lg:order-last"
-            }`}
-          >
-            <WaitingRoomPanel
-              pendingStudents={pendingStudents}
-              onApprove={handleApprove}
-              onReject={handleReject}
+          {/* AI Student Progress Dashboard Panel (Rendered when Practice Session is Active) */}
+          {activePractice && (
+            <StudentProgressDashboard
+              analysisResults={analysisResults}
+              isLoading={isAnalyzingClass}
+              onAnalyzeClass={handleAnalyzeClassProgress}
+              onInspectStudent={handleInspectStudent}
+              lastAnalyzedAt={lastAnalyzedAt}
+              modelUsed={analysisModelUsed}
+              studentsList={students}
             />
+          )}
 
-            <StudentListPanel
-              students={students}
-              roomCode={currentRoomId}
-              isHost={true}
-              onSelectStudent={handleInspectStudent}
-              raisedHands={raisedHands}
-              activeSpeakerId={activeSpeakerId}
-            />
-          </div>
-
-          {/* Left 2 Columns: Live Textarea / Monaco Editor + Custom Input + Terminal Output */}
-          <div className="lg:col-span-2 flex flex-col space-y-4">
+          {/* Live Monaco Code Editor Workspace */}
+          <div className="flex-1 flex flex-col min-h-0">
             <LiveEditor
               value={editorContent}
               isHost={true}
@@ -523,7 +496,25 @@ export const HostDashboard: React.FC = () => {
               onChangeStdin={setStdin}
             />
           </div>
-        </div>
+        </main>
+
+        {/* RIGHT SIDEBAR: Waiting Room Requests & Connected Student Activity */}
+        <aside className="w-full lg:w-80 xl:w-80 shrink-0 flex flex-col space-y-4">
+          <WaitingRoomPanel
+            pendingStudents={pendingStudents}
+            onApprove={handleApprove}
+            onReject={handleReject}
+          />
+
+          <StudentListPanel
+            students={students}
+            roomCode={currentRoomId}
+            isHost={true}
+            onSelectStudent={handleInspectStudent}
+            raisedHands={raisedHands}
+            activeSpeakerId={activeSpeakerId}
+          />
+        </aside>
       </div>
 
       {/* Start Practice Session Modal */}

@@ -71,8 +71,6 @@ export const HostDashboard: React.FC = () => {
         currentRoomId
       );
       setIsVoiceConnected(ok);
-      // Broadcast teacher lecture offer to room
-      livekitVoiceManager.initiatePeerConnection("");
     };
 
     initVoice();
@@ -90,8 +88,7 @@ export const HostDashboard: React.FC = () => {
           setRaisedHands([...(res.roomState.raisedHands || [])]);
           setActiveSpeakerId(res.roomState.activeSpeakerId || null);
 
-          // Broadcast teacher offer to all connected students for continuous lecture audio
-          livekitVoiceManager.initiatePeerConnection("");
+          // Initiate peer connections once for existing students
           connectedStudents.forEach((s) => {
             if (s.socketId) {
               livekitVoiceManager.initiatePeerConnection(s.socketId);
@@ -153,8 +150,6 @@ export const HostDashboard: React.FC = () => {
         const connectedStudents: Student[] = data.students;
         setStudents([...connectedStudents]);
 
-        // Continuously broadcast teacher lecture offer when new students join
-        livekitVoiceManager.initiatePeerConnection("");
         connectedStudents.forEach((s) => {
           if (s.socketId) {
             livekitVoiceManager.initiatePeerConnection(s.socketId);
@@ -223,22 +218,6 @@ export const HostDashboard: React.FC = () => {
     };
   }, [currentRoomId]);
 
-  // Periodic Broadcaster to ensure all connected students receive Teacher lecture audio continuously
-  useEffect(() => {
-    if (!currentRoomId || students.length === 0) return;
-
-    const interval = setInterval(() => {
-      livekitVoiceManager.initiatePeerConnection("");
-      students.forEach((s) => {
-        if (s.socketId) {
-          livekitVoiceManager.initiatePeerConnection(s.socketId);
-        }
-      });
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [currentRoomId, students]);
-
   const handleCopyCode = () => {
     navigator.clipboard.writeText(currentRoomId);
     setCopied(true);
@@ -251,7 +230,6 @@ export const HostDashboard: React.FC = () => {
     if (targetStudent && targetStudent.socketId) {
       livekitVoiceManager.initiatePeerConnection(targetStudent.socketId);
     }
-    livekitVoiceManager.initiatePeerConnection("");
     setPendingStudents((prev) => prev.filter((s) => s.id !== studentId));
   };
 

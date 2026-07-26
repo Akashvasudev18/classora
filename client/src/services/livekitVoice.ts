@@ -54,7 +54,7 @@ export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-// Global Web Audio Context & Autoplay Policy Unlocker
+// Global Web Audio Context & Permanent Remote Audio Element
 let globalAudioCtx: AudioContext | null = null;
 let globalRemoteAudioElement: HTMLAudioElement | null = null;
 
@@ -329,11 +329,7 @@ class OpenRelayWebRTCEngine {
       ],
     });
 
-    // Ensure audio transceiver is explicitly added for active reception
-    try {
-      pc.addTransceiver("audio", { direction: this.isTeacher ? "sendrecv" : "recvonly" });
-    } catch (e) {}
-
+    // Attach local stream tracks (Teacher mic or approved Student mic)
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
         pc.addTrack(track, this.localStream!);

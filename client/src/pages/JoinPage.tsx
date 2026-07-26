@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, KeyRound, User, LogIn, Sparkles, AlertCircle } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
+import { Logo } from "../components/common/Logo";
 
 export const JoinPage: React.FC = () => {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ export const JoinPage: React.FC = () => {
       <header className="relative z-10 max-w-7xl mx-auto w-full px-6 py-6 flex items-center justify-between">
         <button
           onClick={() => navigate("/")}
-          className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 transition-colors border border-slate-800 flex items-center gap-2 text-sm font-medium"
+          className="p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 transition-colors border border-slate-800 flex items-center gap-2 text-sm font-medium cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Home</span>
@@ -62,10 +63,10 @@ export const JoinPage: React.FC = () => {
         <div className="glass-card rounded-3xl p-8 shadow-2xl relative border border-slate-800/80">
           
           <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-4 text-blue-400">
-              <LogIn className="w-7 h-7" />
+            <div className="mb-3">
+              <Logo size="lg" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Join a Classroom</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">Join a Classroom</h1>
             <p className="text-slate-400 text-sm mt-1">Enter your room details to request entry</p>
           </div>
 
@@ -118,12 +119,11 @@ export const JoinPage: React.FC = () => {
               <span>Join Class</span>
             </button>
           </form>
-
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 max-w-7xl mx-auto w-full px-6 py-6 text-center text-xs text-slate-600">
+      <footer className="relative z-10 max-w-7xl mx-auto w-full px-6 py-6 text-center text-xs text-slate-500">
         Classora Classroom Access Protocol
       </footer>
     </div>

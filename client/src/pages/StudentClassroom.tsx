@@ -14,6 +14,7 @@ import { ResizableSplitLayout } from "../components/classroom/ResizableSplitLayo
 import { StudentListPanel } from "../components/classroom/StudentListPanel";
 import { ProblemPanel } from "../components/classroom/ProblemPanel";
 import { SleekVoiceSidebar } from "../components/classroom/SleekVoiceSidebar";
+import { Logo } from "../components/common/Logo";
 import { Student } from "../components/classroom/WaitingRoomPanel";
 import { PracticeProblem } from "../shared/problems";
 
@@ -450,12 +451,10 @@ export const StudentClassroom: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-              <BookOpen className="w-5 h-5" />
-            </div>
+            <Logo size="sm" />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-white leading-tight">Classroom #{currentRoomId}</h1>
+                <span className="text-xs font-semibold text-slate-300">Room #{currentRoomId}</span>
                 <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-wider">
                   STUDENT
                 </span>

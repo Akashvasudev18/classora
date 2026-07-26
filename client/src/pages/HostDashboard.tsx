@@ -14,6 +14,7 @@ import { StartPracticeModal } from "../components/classroom/StartPracticeModal";
 import { StudentCodeModal } from "../components/classroom/StudentCodeModal";
 import { StudentProgressDashboard } from "../components/classroom/StudentProgressDashboard";
 import { SleekVoiceSidebar } from "../components/classroom/SleekVoiceSidebar";
+import { Logo } from "../components/common/Logo";
 import { PracticeProblem } from "../shared/problems";
 
 export const HostDashboard: React.FC = () => {
@@ -366,18 +367,13 @@ export const HostDashboard: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-white leading-tight">Host Control Panel</h1>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
-                  TEACHER
-                </span>
-              </div>
-            </div>
+            <Logo size="sm" />
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+              TEACHER
+            </span>
           </div>
+
+
         </div>
 
         {/* Center / Right Metrics & Practice Session Control */}

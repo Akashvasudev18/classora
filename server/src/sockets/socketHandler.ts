@@ -313,7 +313,31 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 9. Teacher Student Code Inspection & Live Assistance Events
+    // 9. Built-in WebRTC Audio Signaling Events (Zero-Config Voice Fallback)
+    socket.on("webrtc-offer", ({ roomId, targetSocketId, offer }: { roomId: string; targetSocketId?: string; offer: any }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("webrtc-offer", { offer, senderSocketId: socket.id, roomId: cleanRoomId });
+      } else {
+        socket.to(cleanRoomId).emit("webrtc-offer", { offer, senderSocketId: socket.id, roomId: cleanRoomId });
+      }
+    });
+
+    socket.on("webrtc-answer", ({ roomId, targetSocketId, answer }: { roomId: string; targetSocketId: string; answer: any }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      io.to(targetSocketId).emit("webrtc-answer", { answer, senderSocketId: socket.id, roomId: cleanRoomId });
+    });
+
+    socket.on("webrtc-ice-candidate", ({ roomId, targetSocketId, candidate }: { roomId: string; targetSocketId?: string; candidate: any }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("webrtc-ice-candidate", { candidate, senderSocketId: socket.id, roomId: cleanRoomId });
+      } else {
+        socket.to(cleanRoomId).emit("webrtc-ice-candidate", { candidate, senderSocketId: socket.id, roomId: cleanRoomId });
+      }
+    });
+
+    // 10. Teacher Student Code Inspection & Live Assistance Events
     socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       const room = roomManager.getRoom(cleanRoomId);
@@ -369,7 +393,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 10. Code Execution Socket Event with stdin support
+    // 11. Code Execution Socket Event with stdin support
     socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
@@ -392,7 +416,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 11. End Room Event (Purges memory & notifies everyone)
+    // 12. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -406,7 +430,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 12. Handle Disconnection & Memory Cleanup
+    // 13. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);

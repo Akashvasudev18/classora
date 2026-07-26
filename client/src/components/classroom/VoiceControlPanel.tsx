@@ -52,7 +52,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                     isVoiceConnected ? "bg-emerald-400" : "bg-amber-400"
                   }`}
                 ></span>
-                {isVoiceConnected ? "LiveKit Voice Connected" : "Connecting Voice..."}
+                {isVoiceConnected ? "Voice Connected 🟢" : "Connecting Voice..."}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">

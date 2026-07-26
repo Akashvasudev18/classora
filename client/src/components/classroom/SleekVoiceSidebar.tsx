@@ -14,6 +14,7 @@ import {
   Shield,
   ChevronRight,
   ChevronLeft,
+  UserCheck,
 } from "lucide-react";
 import { Student } from "./WaitingRoomPanel";
 import { getAudioInputDevices, livekitVoiceManager, unlockAudioPlayer } from "../../services/livekitVoice";
@@ -21,7 +22,7 @@ import { getAudioInputDevices, livekitVoiceManager, unlockAudioPlayer } from "..
 interface SleekVoiceSidebarProps {
   isHost: boolean;
   students: Student[];
-  raisedHands: string[]; // Student IDs
+  raisedHands: string[]; // Student IDs or socket IDs
   activeSpeakerId: string | null;
   onAllowSpeaker?: (studentId: string) => void;
   onRemoveSpeaker?: (studentId: string) => void;
@@ -58,9 +59,11 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
   const [volumeLevel, setVolumeLevel] = useState<number>(0);
   const [isTeacherMicMuted, setIsTeacherMicMuted] = useState<boolean>(false);
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState<boolean>(false);
+  const [isHandQueueOpen, setIsHandQueueOpen] = useState<boolean>(false);
   const [hoveredStudentId, setHoveredStudentId] = useState<string | null>(null);
 
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const devicePopoverRef = useRef<HTMLDivElement>(null);
+  const handPopoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -80,8 +83,11 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+      if (devicePopoverRef.current && !devicePopoverRef.current.contains(event.target as Node)) {
         setIsDeviceMenuOpen(false);
+      }
+      if (handPopoverRef.current && !handPopoverRef.current.contains(event.target as Node)) {
+        setIsHandQueueOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -100,9 +106,23 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
     await livekitVoiceManager.setMicrophoneEnabled(!nextState);
   };
 
-  const queueStudents = students.filter((s) => raisedHands.includes(s.id));
-  const activeSpeaker = students.find((s) => s.id === activeSpeakerId);
-  const isSoundDetected = volumeLevel > 5;
+  // Robust student resolution matching both studentId and socketId
+  const getRaisedHandStudents = (): Student[] => {
+    if (!raisedHands || raisedHands.length === 0) return [];
+    
+    return raisedHands.map((id) => {
+      const matched = students.find((s) => s.id === id || s.socketId === id);
+      if (matched) return matched;
+      return {
+        id,
+        name: `Student (${id.substring(0, 6)})`,
+        socketId: id,
+      };
+    });
+  };
+
+  const queueStudents = getRaisedHandStudents();
+  const activeSpeaker = students.find((s) => s.id === activeSpeakerId || s.socketId === activeSpeakerId);
 
   return (
     <aside className="w-16 sm:w-20 bg-[#111621]/95 border-r border-slate-800/80 p-2.5 flex flex-col items-center justify-between font-sans select-none rounded-2xl shadow-2xl relative z-20 space-y-4">
@@ -223,7 +243,7 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
         )}
 
         {/* Microphone Input Device Picker Dropdown Popover */}
-        <div className="relative" ref={popoverRef}>
+        <div className="relative" ref={devicePopoverRef}>
           <button
             onClick={() => setIsDeviceMenuOpen((prev) => !prev)}
             className="w-9 h-9 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center justify-center transition-colors cursor-pointer group relative"
@@ -263,7 +283,7 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
         </div>
       </div>
 
-      {/* Middle/Bottom Section: Raised Hands Queue (Icons Only + Hover Allow Action for Teacher) */}
+      {/* Bottom Section: Teacher Raised Hands Queue & Permission Popover Tab */}
       {isHost && (
         <div className="flex flex-col items-center space-y-3 w-full border-t border-slate-800/80 pt-3">
           {/* Mute All Icon Button */}
@@ -280,43 +300,82 @@ export const SleekVoiceSidebar: React.FC<SleekVoiceSidebarProps> = ({
             </button>
           )}
 
-          {/* Raised Hands Stacked Icon List */}
-          <div className="flex flex-col items-center space-y-2 w-full max-h-48 overflow-y-auto">
-            <div className="text-[9px] font-bold text-amber-400 uppercase tracking-tighter flex items-center gap-0.5">
-              <Hand className="w-3 h-3" />
-              <span>({queueStudents.length})</span>
-            </div>
+          {/* Dedicated Raised Hands Icon Button with Badge & Floating Permission Tab */}
+          <div className="relative" ref={handPopoverRef}>
+            <button
+              onClick={() => setIsHandQueueOpen((prev) => !prev)}
+              onMouseEnter={() => setIsHandQueueOpen(true)}
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg transition-all border cursor-pointer relative group ${
+                queueStudents.length > 0
+                  ? "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 ring-2 ring-amber-400/30 animate-pulse"
+                  : "bg-slate-900 text-slate-500 border-slate-800"
+              }`}
+              title="Raised Hands Permission Queue"
+            >
+              <Hand className={`w-5 h-5 ${queueStudents.length > 0 ? "text-amber-300 animate-bounce" : "text-slate-500"}`} />
 
-            {queueStudents.map((s) => (
+              {/* Hand Count Badge */}
+              {queueStudents.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-slate-950 font-extrabold text-[10px] flex items-center justify-center border-2 border-[#111621] shadow-md">
+                  {queueStudents.length}
+                </span>
+              )}
+            </button>
+
+            {/* Floating Raised Hand Permission Tab Card */}
+            {isHandQueueOpen && (
               <div
-                key={s.id}
-                onMouseEnter={() => setHoveredStudentId(s.id)}
-                onMouseLeave={() => setHoveredStudentId(null)}
-                className="relative group cursor-pointer"
+                className="absolute left-14 bottom-0 w-72 p-3.5 rounded-2xl bg-[#111621] border border-amber-500/40 shadow-2xl z-50 flex flex-col space-y-3 animate-in fade-in zoom-in-95"
+                onMouseEnter={() => setIsHandQueueOpen(true)}
+                onMouseLeave={() => setIsHandQueueOpen(false)}
               >
-                {/* Compact Student Icon */}
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center font-bold text-xs shadow-md animate-pulse">
-                  ✋
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <Hand className="w-4 h-4 text-amber-400" />
+                    <span>Raised Hands Permission Queue ({queueStudents.length})</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">1 Speaker Limit</span>
                 </div>
 
-                {/* Hover Popover Tooltip Card with "Allow Speak" Button */}
-                {hoveredStudentId === s.id && (
-                  <div className="absolute left-14 top-0 w-48 p-2.5 rounded-2xl bg-[#111621] border border-amber-500/40 shadow-2xl z-50 flex flex-col space-y-2 animate-in fade-in">
-                    <div className="text-xs font-bold text-amber-200 truncate">{s.name}</div>
-                    <div className="text-[10px] text-slate-400">Student requested to speak</div>
-                    {onAllowSpeaker && (
-                      <button
-                        onClick={() => onAllowSpeaker(s.id)}
-                        className="w-full py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                {queueStudents.length === 0 ? (
+                  <div className="py-4 text-center text-slate-500 text-xs italic">
+                    No students currently have hands raised ✋
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {queueStudents.map((s) => (
+                      <div
+                        key={s.id}
+                        className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2 shadow-sm"
                       >
-                        <Volume2 className="w-3.5 h-3.5" />
-                        <span>Allow Speak</span>
-                      </button>
-                    )}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            ✋
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-amber-200 truncate">{s.name}</div>
+                            <div className="text-[10px] text-amber-400/70">Wants to speak</div>
+                          </div>
+                        </div>
+
+                        {onAllowSpeaker && (
+                          <button
+                            onClick={() => {
+                              onAllowSpeaker(s.id);
+                              setIsHandQueueOpen(false);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>Allow Speak 🟢</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}

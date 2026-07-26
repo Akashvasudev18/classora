@@ -4,6 +4,7 @@ import { Video, LogIn, Users, Sparkles, Shield, Code2 } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { Logo } from "../components/common/Logo";
 import { BrowserPreviewLoader } from "../components/common/BrowserPreviewLoader";
+import { MacBookShowcase } from "../components/common/MacBookShowcase";
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -96,6 +97,11 @@ export const Home: React.FC = () => {
         {/* Uiverse.io Browser Animation Showcase */}
         <div className="w-full mt-12 mb-4">
           <BrowserPreviewLoader />
+        </div>
+
+        {/* Uiverse.io 3D Opening MacBook Showcase by Spacious74 */}
+        <div className="w-full my-6 flex flex-col items-center">
+          <MacBookShowcase />
         </div>
 
         {/* Feature Cards Grid */}

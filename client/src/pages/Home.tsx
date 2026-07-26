@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Video, LogIn, Users, Sparkles, Shield, Code2 } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { Logo } from "../components/common/Logo";
+import { BrowserPreviewLoader } from "../components/common/BrowserPreviewLoader";
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { isConnected } = useSocketStatus();
-  const [isHosting, setIsHosting] = useState(false);
 
   // Generate random 6-character alphanumeric room code
   const generateRoomCode = (): string => {
@@ -55,7 +55,7 @@ export const Home: React.FC = () => {
       </header>
 
       {/* Hero Section */}
-      <main className="relative z-10 max-w-5xl mx-auto w-full px-6 py-12 flex-1 flex flex-col items-center justify-center text-center">
+      <main className="relative z-10 max-w-6xl mx-auto w-full px-6 py-12 flex-1 flex flex-col items-center justify-center text-center">
         {/* Top Feature Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-8 animate-float">
           <Sparkles className="w-4 h-4 text-blue-400" />
@@ -86,15 +86,25 @@ export const Home: React.FC = () => {
 
           <button
             onClick={() => navigate("/join")}
-            className="w-full sm:w-1/2 group relative inline-flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-100 font-semibold text-base border border-slate-700/80 hover:border-blue-500/50 backdrop-blur-md shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0"
+            className="w-full sm:w-1/2 group relative inline-flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-slate-100 font-semibold text-base border border-slate-700/80 hover:border-blue-500/50 backdrop-blur-md shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
           >
             <LogIn className="w-5 h-5 text-blue-400 transition-transform group-hover:scale-110" />
             <span>Join Class</span>
           </button>
         </div>
 
+        {/* Uiverse.io Browser Animation Showcase Requested by User */}
+        <div className="w-full mt-14 mb-8">
+          <div className="text-center mb-3">
+            <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded-full">
+              Live Interface Network Preview
+            </span>
+          </div>
+          <BrowserPreviewLoader />
+        </div>
+
         {/* Feature Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 w-full text-left">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 w-full text-left">
           <div className="glass-panel glass-panel-hover rounded-2xl p-6 relative group overflow-hidden">
             <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 text-blue-400">
               <Users className="w-6 h-6" />

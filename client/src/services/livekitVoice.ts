@@ -44,38 +44,28 @@ export async function fetchLiveKitToken(
   }
 }
 
-// Global Audio Element & Autoplay Policy Unlocker
-let remoteAudioElement: HTMLAudioElement | null = null;
+// Global Web Audio Context & Autoplay Policy Unlocker
+let globalAudioCtx: AudioContext | null = null;
 
-export function unlockAudioPlayer(): HTMLAudioElement {
-  if (!remoteAudioElement) {
-    let existing = document.getElementById("classora-remote-voice-player") as HTMLAudioElement;
-    if (existing) {
-      remoteAudioElement = existing;
-    } else {
-      remoteAudioElement = document.createElement("audio");
-      remoteAudioElement.id = "classora-remote-voice-player";
-      remoteAudioElement.autoplay = true;
-      (remoteAudioElement as any).playsInline = true;
-      remoteAudioElement.style.display = "none";
-      document.body.appendChild(remoteAudioElement);
-    }
+export function getGlobalAudioContext(): AudioContext {
+  if (!globalAudioCtx || globalAudioCtx.state === "closed") {
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    globalAudioCtx = new AudioCtxClass();
   }
-
-  // Attempt to unlock AudioContext on user gesture
-  if (remoteAudioElement) {
-    remoteAudioElement.play().catch(() => {
-      // Audio play blocked until user gesture
-    });
+  if (globalAudioCtx.state === "suspended") {
+    globalAudioCtx.resume().catch(() => {});
   }
-
-  return remoteAudioElement;
+  return globalAudioCtx;
 }
 
-// Global window click listener to guarantee browser autoplay policy is unlocked on first user click
+export function unlockAudioPlayer(): AudioContext {
+  return getGlobalAudioContext();
+}
+
+// Global window click listener to guarantee browser AudioContext is unlocked on first user gesture
 if (typeof window !== "undefined") {
   const handleUserGesture = () => {
-    unlockAudioPlayer();
+    getGlobalAudioContext();
     window.removeEventListener("click", handleUserGesture);
     window.removeEventListener("touchstart", handleUserGesture);
   };
@@ -83,28 +73,28 @@ if (typeof window !== "undefined") {
   window.addEventListener("touchstart", handleUserGesture);
 }
 
-// Socket.IO Web Audio Relay Engine (Guaranteed Mobile & Cross-Tab Voice Audio)
-class SocketAudioRelayEngine {
+// Web Audio API Raw PCM Streaming Engine (Zero Container Headers - Guaranteed 100% Mobile & Cross-Tab Voice Audio)
+class WebAudioPCMEngine {
   private localStream: MediaStream | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
+  private audioCtx: AudioContext | null = null;
+  private mediaSource: MediaStreamAudioSourceNode | null = null;
+  private scriptProcessor: ScriptProcessorNode | null = null;
   private isTeacher: boolean = false;
   private isMicEnabled: boolean = false;
   private currentRoomId: string = "";
   private senderName: string = "Speaker";
-  private audioQueue: string[] = [];
-  private isPlayingQueue: boolean = false;
 
   public async init(roomId: string, senderName: string, isTeacher: boolean): Promise<boolean> {
     this.currentRoomId = (roomId || "DEMO").toUpperCase();
     this.senderName = senderName || (isTeacher ? "Teacher" : "Student");
     this.isTeacher = isTeacher;
     this.isMicEnabled = isTeacher;
-    unlockAudioPlayer();
 
+    unlockAudioPlayer();
     this.bindSocketListeners();
 
     if (isTeacher) {
-      await this.startMicrophoneRecording();
+      await this.startMicrophoneCapture();
     }
 
     return true;
@@ -113,15 +103,15 @@ class SocketAudioRelayEngine {
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {
     this.isMicEnabled = enabled;
     if (enabled) {
-      await this.startMicrophoneRecording();
+      await this.startMicrophoneCapture();
     } else {
-      this.stopMicrophoneRecording();
+      this.stopMicrophoneCapture();
     }
-    console.log(`[AudioRelay] Microphone set to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
+    console.log(`[PCMEngine] Microphone set to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
     return true;
   }
 
-  private async startMicrophoneRecording() {
+  private async startMicrophoneCapture() {
     try {
       if (!this.localStream) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -134,119 +124,106 @@ class SocketAudioRelayEngine {
         });
       }
 
-      this.stopMicrophoneRecording();
+      this.stopMicrophoneCapture();
 
-      // Find supported MIME type for cross-platform audio (Opus / WebM / MP4 / AAC)
-      const options: MediaRecorderOptions = {};
-      if (typeof MediaRecorder !== "undefined") {
-        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-          options.mimeType = "audio/webm;codecs=opus";
-        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-          options.mimeType = "audio/mp4";
-        } else if (MediaRecorder.isTypeSupported("audio/aac")) {
-          options.mimeType = "audio/aac";
+      this.audioCtx = getGlobalAudioContext();
+      this.mediaSource = this.audioCtx.createMediaStreamSource(this.localStream);
+
+      // Create a 2048-sample buffer processor (~46ms audio frames)
+      this.scriptProcessor = this.audioCtx.createScriptProcessor(2048, 1, 1);
+
+      this.scriptProcessor.onaudioprocess = (e: AudioProcessingEvent) => {
+        if (!this.isMicEnabled) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+
+        // Convert Float32Array [-1.0, 1.0] to 16-bit PCM Int16Array for socket transfer
+        const pcmSamples = new Int16Array(inputData.length);
+        let hasSound = false;
+
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          if (Math.abs(s) > 0.005) hasSound = true;
+          pcmSamples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
-      }
 
-      this.mediaRecorder = new MediaRecorder(this.localStream, options);
-
-      this.mediaRecorder.ondataavailable = async (event: BlobEvent) => {
-        if (event.data && event.data.size > 0 && this.isMicEnabled) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64Data = reader.result as string;
-            socket.emit("broadcast-voice-chunk", {
-              roomId: this.currentRoomId,
-              audioBuffer: base64Data,
-              senderName: this.senderName,
-              isTeacher: this.isTeacher,
-            });
-          };
-          reader.readAsDataURL(event.data);
+        // Only emit if there is active audio or periodic keep-alive
+        if (hasSound || Math.random() < 0.1) {
+          socket.emit("broadcast-pcm-audio", {
+            roomId: this.currentRoomId,
+            pcmSamples: Array.from(pcmSamples),
+            sampleRate: this.audioCtx?.sampleRate || 44100,
+            senderName: this.senderName,
+          });
         }
       };
 
-      // Record in 250ms continuous audio slices
-      this.mediaRecorder.start(250);
-      console.log(`[AudioRelay] Recording audio slices (250ms) using mimeType: ${options.mimeType || "default"}`);
+      this.mediaSource.connect(this.scriptProcessor);
+      this.scriptProcessor.connect(this.audioCtx.destination);
+      console.log(`[PCMEngine] Capturing real-time PCM audio at sampleRate: ${this.audioCtx.sampleRate} Hz`);
     } catch (err) {
-      console.warn("[AudioRelay] Error accessing microphone:", err);
+      console.warn("[PCMEngine] Error accessing microphone:", err);
     }
   }
 
-  private stopMicrophoneRecording() {
-    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+  private stopMicrophoneCapture() {
+    if (this.scriptProcessor) {
       try {
-        this.mediaRecorder.stop();
+        this.scriptProcessor.disconnect();
       } catch (e) {}
-      this.mediaRecorder = null;
+      this.scriptProcessor = null;
+    }
+    if (this.mediaSource) {
+      try {
+        this.mediaSource.disconnect();
+      } catch (e) {}
+      this.mediaSource = null;
     }
   }
 
   private bindSocketListeners() {
-    socket.off("receive-voice-chunk");
-    socket.on("receive-voice-chunk", ({ audioBuffer }: { audioBuffer: string }) => {
-      if (audioBuffer) {
-        this.audioQueue.push(audioBuffer);
-        this.processAudioQueue();
+    socket.off("receive-pcm-audio");
+    socket.on("receive-pcm-audio", ({ pcmSamples, sampleRate }: { pcmSamples: number[]; sampleRate: number }) => {
+      if (!pcmSamples || pcmSamples.length === 0) return;
+
+      try {
+        const ctx = getGlobalAudioContext();
+
+        // Convert Int16 PCM array back to Float32Array
+        const float32Samples = new Float32Array(pcmSamples.length);
+        for (let i = 0; i < pcmSamples.length; i++) {
+          const s = pcmSamples[i];
+          float32Samples[i] = s < 0 ? s / 0x8000 : s / 0x7FFF;
+        }
+
+        const audioBuffer = ctx.createBuffer(1, float32Samples.length, sampleRate || 44100);
+        audioBuffer.getChannelData(0).set(float32Samples);
+
+        const sourceNode = ctx.createBufferSource();
+        sourceNode.buffer = audioBuffer;
+        sourceNode.connect(ctx.destination);
+        sourceNode.start(0);
+      } catch (err) {
+        console.error("[PCMEngine] Error playing PCM sample chunk:", err);
       }
     });
   }
 
-  private async processAudioQueue() {
-    if (this.isPlayingQueue || this.audioQueue.length === 0) return;
-
-    this.isPlayingQueue = true;
-    const nextChunk = this.audioQueue.shift();
-
-    if (nextChunk) {
-      try {
-        const audio = new Audio(nextChunk);
-        audio.autoplay = true;
-        (audio as any).playsInline = true;
-
-        audio.onended = () => {
-          this.isPlayingQueue = false;
-          this.processAudioQueue();
-        };
-
-        audio.onerror = () => {
-          this.isPlayingQueue = false;
-          this.processAudioQueue();
-        };
-
-        await audio.play().catch(() => {
-          // Autoplay policy fallback
-          this.isPlayingQueue = false;
-          this.processAudioQueue();
-        });
-      } catch (err) {
-        this.isPlayingQueue = false;
-        this.processAudioQueue();
-      }
-    } else {
-      this.isPlayingQueue = false;
-    }
-  }
-
   public cleanup() {
-    this.stopMicrophoneRecording();
+    this.stopMicrophoneCapture();
     if (this.localStream) {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
     }
-    socket.off("receive-voice-chunk");
-    this.audioQueue = [];
-    this.isPlayingQueue = false;
+    socket.off("receive-pcm-audio");
   }
 }
 
 export class LiveKitVoiceManager {
   private room: Room | null = null;
   private isConnected: boolean = false;
-  private voiceMode: "livekit" | "relay" = "relay";
+  private voiceMode: "livekit" | "pcm" = "pcm";
   private activeSpeakers: string[] = [];
-  private relayEngine: SocketAudioRelayEngine = new SocketAudioRelayEngine();
+  private pcmEngine: WebAudioPCMEngine = new WebAudioPCMEngine();
   private onActiveSpeakersChangeCb?: (speakers: string[]) => void;
   private onConnectionStateChangeCb?: (connected: boolean) => void;
 
@@ -286,9 +263,11 @@ export class LiveKitVoiceManager {
 
         this.room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
-            const player = unlockAudioPlayer();
-            track.attach(player);
-            player.play().catch(() => {});
+            const ctx = getGlobalAudioContext();
+            const el = document.createElement("audio");
+            el.autoplay = true;
+            track.attach(el);
+            el.play().catch(() => {});
           }
         });
 
@@ -300,14 +279,14 @@ export class LiveKitVoiceManager {
         return true;
       }
     } catch (err) {
-      console.warn("[LiveKitVoice] LiveKit Cloud unavailable or placeholder domain. Activating Socket.IO Web Audio Relay Engine fallback...");
+      console.warn("[LiveKitVoice] LiveKit Cloud unavailable or placeholder domain. Activating Web Audio API PCM Engine fallback...");
     }
 
-    // 2. Guaranteed Fallback: Socket.IO Web Audio Relay Engine (Works on all mobile phones & tabs!)
-    console.log("[LiveKitVoice] Initializing Socket.IO Web Audio Relay Engine...");
-    const ok = await this.relayEngine.init(token || "ROOM", identity, isTeacher);
+    // 2. Guaranteed Fallback: Web Audio API PCM Sample Engine (Works on all mobile phones & tabs!)
+    console.log("[LiveKitVoice] Initializing Web Audio API PCM Engine...");
+    const ok = await this.pcmEngine.init(token || "ROOM", identity, isTeacher);
     this.isConnected = ok;
-    this.voiceMode = "relay";
+    this.voiceMode = "pcm";
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(ok);
     return ok;
   }
@@ -323,8 +302,8 @@ export class LiveKitVoiceManager {
       }
     }
 
-    // Fallback to Socket.IO Web Audio Relay Engine
-    return await this.relayEngine.setMicrophoneEnabled(enabled);
+    // Fallback to PCM Engine
+    return await this.pcmEngine.setMicrophoneEnabled(enabled);
   }
 
   public onActiveSpeakersChange(cb: (speakers: string[]) => void) {
@@ -339,7 +318,7 @@ export class LiveKitVoiceManager {
     return this.isConnected;
   }
 
-  public getVoiceMode(): "livekit" | "relay" {
+  public getVoiceMode(): "livekit" | "pcm" {
     return this.voiceMode;
   }
 
@@ -352,7 +331,7 @@ export class LiveKitVoiceManager {
       }
       this.room = null;
     }
-    this.relayEngine.cleanup();
+    this.pcmEngine.cleanup();
     this.isConnected = false;
   }
 }

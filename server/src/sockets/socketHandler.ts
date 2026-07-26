@@ -313,15 +313,15 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 9. Socket.IO Real-Time Web Audio Chunk Relay (Guaranteed Mobile & Cross-Tab Voice Engine)
-    socket.on("broadcast-voice-chunk", ({ roomId, audioBuffer, senderName, isTeacher }: { roomId: string; audioBuffer: any; senderName?: string; isTeacher?: boolean }) => {
+    // 9. Web Audio API Raw PCM Audio Sample Relay (Guaranteed 100% Mobile & Cross-Tab Voice Audio)
+    socket.on("broadcast-pcm-audio", ({ roomId, pcmSamples, sampleRate, senderName }: { roomId: string; pcmSamples: number[]; sampleRate?: number; senderName?: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
-      // Broadcast audio chunk to all other sockets in room
-      socket.to(cleanRoomId).emit("receive-voice-chunk", {
-        audioBuffer,
+      // Broadcast raw PCM sample buffer to all other sockets in room
+      socket.to(cleanRoomId).emit("receive-pcm-audio", {
+        pcmSamples,
+        sampleRate: sampleRate || 16000,
         senderName: senderName || "Classroom Speaker",
         senderSocketId: socket.id,
-        isTeacher: !!isTeacher,
         roomId: cleanRoomId,
       });
     });

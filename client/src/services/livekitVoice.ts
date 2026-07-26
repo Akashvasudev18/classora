@@ -46,7 +46,6 @@ export async function fetchLiveKitToken(
 
 export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
   try {
-    // Request permission once to ensure labels are populated
     await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
     const devices = await navigator.mediaDevices.enumerateDevices();
     return devices.filter((d) => d.kind === "audioinput");
@@ -57,6 +56,7 @@ export async function getAudioInputDevices(): Promise<MediaDeviceInfo[]> {
 
 // Global Web Audio Context & Autoplay Policy Unlocker
 let globalAudioCtx: AudioContext | null = null;
+let globalRemoteAudioElement: HTMLAudioElement | null = null;
 
 export function getGlobalAudioContext(): AudioContext {
   if (!globalAudioCtx || globalAudioCtx.state === "closed") {
@@ -69,17 +69,41 @@ export function getGlobalAudioContext(): AudioContext {
   return globalAudioCtx;
 }
 
+export function getOrCreateRemoteAudioPlayer(): HTMLAudioElement {
+  if (!globalRemoteAudioElement || !document.body.contains(globalRemoteAudioElement)) {
+    let existing = document.getElementById("classora-remote-teacher-audio") as HTMLAudioElement;
+    if (existing) {
+      globalRemoteAudioElement = existing;
+    } else {
+      globalRemoteAudioElement = document.createElement("audio");
+      globalRemoteAudioElement.id = "classora-remote-teacher-audio";
+      globalRemoteAudioElement.autoplay = true;
+      (globalRemoteAudioElement as any).playsInline = true;
+      globalRemoteAudioElement.style.display = "none";
+      document.body.appendChild(globalRemoteAudioElement);
+    }
+  }
+
+  globalRemoteAudioElement.muted = false;
+  globalRemoteAudioElement.volume = 1.0;
+  return globalRemoteAudioElement;
+}
+
 export function unlockAudioPlayer(): AudioContext {
+  const player = getOrCreateRemoteAudioPlayer();
+  player.play().catch(() => {});
   return getGlobalAudioContext();
 }
 
-// Global click & touch listener to unlock AudioContext on user gesture
+// Global click & touch listener to unlock AudioContext and Audio Player on user gesture
 if (typeof window !== "undefined") {
   const handleUserGesture = () => {
     const ctx = getGlobalAudioContext();
     if (ctx.state === "suspended") {
       ctx.resume().catch(() => {});
     }
+    const player = getOrCreateRemoteAudioPlayer();
+    player.play().catch(() => {});
     window.removeEventListener("click", handleUserGesture);
     window.removeEventListener("touchstart", handleUserGesture);
   };
@@ -255,12 +279,26 @@ class OpenRelayWebRTCEngine {
     };
 
     pc.ontrack = (event) => {
-      console.log("[WebRTCVoice] 🔊 Incoming remote Opus voice track attached!");
-      const el = document.createElement("audio");
-      el.autoplay = true;
-      (el as any).playsInline = true;
-      el.srcObject = event.streams[0];
-      el.play().catch(() => {});
+      console.log("[WebRTCVoice] 🔊 Incoming remote Opus voice track attached to permanent DOM player!");
+      const stream = event.streams[0];
+      if (!stream) return;
+
+      // 1. Permanent DOM Audio Player Attachment
+      const player = getOrCreateRemoteAudioPlayer();
+      player.srcObject = stream;
+      player.play().catch((err) => console.log("[WebRTCVoice] Player play error:", err));
+
+      // 2. Dual Pipe: Route into unlocked Web Audio API AudioContext
+      try {
+        const ctx = getGlobalAudioContext();
+        if (ctx.state === "suspended") {
+          ctx.resume().catch(() => {});
+        }
+        const source = ctx.createMediaStreamSource(stream);
+        source.connect(ctx.destination);
+      } catch (e) {
+        // Silent catch for duplicate stream source
+      }
     };
 
     this.peerConnections[targetSocketId] = pc;
@@ -489,10 +527,9 @@ export class LiveKitVoiceManager {
 
         this.room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
-            const el = document.createElement("audio");
-            el.autoplay = true;
-            track.attach(el);
-            el.play().catch(() => {});
+            const player = getOrCreateRemoteAudioPlayer();
+            track.attach(player);
+            player.play().catch(() => {});
           }
         });
 

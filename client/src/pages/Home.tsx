@@ -4,6 +4,7 @@ import { Video, LogIn, Users, Sparkles, Shield, Code2 } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { Logo } from "../components/common/Logo";
 import { BrowserPreviewLoader } from "../components/common/BrowserPreviewLoader";
+import { Cube3DShowcase } from "../components/common/Cube3DShowcase";
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -93,14 +94,14 @@ export const Home: React.FC = () => {
           </button>
         </div>
 
-        {/* Uiverse.io Browser Animation Showcase Requested by User */}
-        <div className="w-full mt-14 mb-8">
-          <div className="text-center mb-3">
-            <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded-full">
-              Live Interface Network Preview
-            </span>
-          </div>
+        {/* Uiverse.io Browser Animation Showcase */}
+        <div className="w-full mt-12 mb-4">
           <BrowserPreviewLoader />
+        </div>
+
+        {/* Uiverse.io 3D Rotating Cube Showcase (Classora, Collab, Learn, Code, Share, Practice) */}
+        <div className="w-full my-6 flex flex-col items-center">
+          <Cube3DShowcase />
         </div>
 
         {/* Feature Cards Grid */}

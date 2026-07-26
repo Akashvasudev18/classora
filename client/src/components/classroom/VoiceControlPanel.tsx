@@ -26,6 +26,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [volumeLevel, setVolumeLevel] = useState<number>(0);
+  const [isTeacherMicMuted, setIsTeacherMicMuted] = useState<boolean>(false);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -47,6 +48,12 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
     const newDeviceId = e.target.value;
     setSelectedDeviceId(newDeviceId);
     livekitVoiceManager.setAudioInputDevice(newDeviceId);
+  };
+
+  const handleToggleTeacherMic = async () => {
+    const nextState = !isTeacherMicMuted;
+    setIsTeacherMicMuted(nextState);
+    await livekitVoiceManager.setMicrophoneEnabled(!nextState);
   };
 
   const activeSpeaker = students.find((s) => s.id === activeSpeakerId);
@@ -84,7 +91,10 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Teacher Microphone: <span className="text-emerald-400 font-semibold">Always ON 🟢</span>
+              Teacher Broadcast Mic:{" "}
+              <span className={isTeacherMicMuted ? "text-rose-400 font-semibold" : "text-emerald-400 font-semibold"}>
+                {isTeacherMicMuted ? "MUTED 🔇" : "BROADCASTING LIVE TO ALL STUDENTS 🟢"}
+              </span>
             </p>
           </div>
         </div>
@@ -109,7 +119,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                 <Activity className={`w-4 h-4 ${isSoundDetected ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
-                <span>Live Microphone Input Monitor:</span>
+                <span>Live Teacher Mic Monitor:</span>
                 <span
                   className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                     isSoundDetected
@@ -119,7 +129,7 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 >
                   {isSoundDetected
                     ? `🎙️ REGISTERING SOUND (${volumeLevel}%)`
-                    : "⚠️ SILENT (0%) - Speak to test your mic"}
+                    : "⚠️ SILENT (0%) - Speak to broadcast your lecture audio"}
                 </span>
               </div>
               <span className="text-xs font-mono font-bold text-indigo-300">{volumeLevel}%</span>
@@ -127,7 +137,6 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
 
             {/* Dynamic Real-Time Volume Progress Bar & Equalizer Wave Visualizer */}
             <div className="flex items-center gap-3">
-              {/* Progress Level Bar */}
               <div className="flex-1 h-3 rounded-full bg-slate-800 border border-slate-700 overflow-hidden relative">
                 <div
                   className={`h-full transition-all duration-75 ${
@@ -141,7 +150,6 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
                 ></div>
               </div>
 
-              {/* 10 Equalizer Waveform Bars */}
               <div className="flex items-end gap-1 h-5 shrink-0 px-1">
                 {[40, 75, 100, 60, 90, 45, 80, 100, 65, 50].map((heightPct, idx) => {
                   const barHeight = isSoundDetected ? Math.max(15, Math.round((volumeLevel / 100) * heightPct)) : 10;
@@ -159,26 +167,42 @@ export const VoiceControlPanel: React.FC<VoiceControlPanelProps> = ({
             </div>
           </div>
 
-          {/* Microphone Selector Bar for Teacher */}
-          {audioDevices.length > 0 && (
-            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-indigo-300 font-semibold shrink-0">
-                <Settings className="w-4 h-4 text-indigo-400" />
-                <span>Microphone Device:</span>
+          {/* Controls Bar: Teacher Mic Mute/Unmute Toggle & Microphone Device Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Teacher Mic Mute/Unmute Button */}
+            <button
+              onClick={handleToggleTeacherMic}
+              className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs shadow-md border transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                isTeacherMicMuted
+                  ? "bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border-rose-500/40"
+                  : "bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border-emerald-500/40"
+              }`}
+            >
+              {isTeacherMicMuted ? <MicOff className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4 text-emerald-400 animate-bounce" />}
+              <span>{isTeacherMicMuted ? "Unmute Teacher Mic 🎙️" : "Mute Teacher Mic 🔇"}</span>
+            </button>
+
+            {/* Microphone Device Selector Dropdown */}
+            {audioDevices.length > 0 && (
+              <div className="p-2 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 text-indigo-300 font-semibold shrink-0">
+                  <Settings className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Mic Device:</span>
+                </div>
+                <select
+                  value={selectedDeviceId}
+                  onChange={handleDeviceChange}
+                  className="bg-slate-800 text-slate-200 border border-slate-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 w-full truncate cursor-pointer"
+                >
+                  {audioDevices.map((d, index) => (
+                    <option key={d.deviceId || index} value={d.deviceId}>
+                      {d.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                value={selectedDeviceId}
-                onChange={handleDeviceChange}
-                className="bg-slate-800 text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-indigo-500 w-full max-w-xs truncate cursor-pointer"
-              >
-                {audioDevices.map((d, index) => (
-                  <option key={d.deviceId || index} value={d.deviceId}>
-                    {d.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Top Row: Current Active Speaker & Emergency Mute All */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -50,6 +50,7 @@ export const StudentClassroom: React.FC = () => {
   // Refs for practice state so socket event listeners read fresh state without triggering useEffect re-runs
   const practiceCodeRef = useRef<string>(practiceCode);
   const practiceResultRef = useRef<ExecutionResult | null>(practiceResult);
+  const activePracticeRef = useRef<PracticeProblem | null>(activePractice);
 
   useEffect(() => {
     practiceCodeRef.current = practiceCode;
@@ -58,6 +59,10 @@ export const StudentClassroom: React.FC = () => {
   useEffect(() => {
     practiceResultRef.current = practiceResult;
   }, [practiceResult]);
+
+  useEffect(() => {
+    activePracticeRef.current = activePractice;
+  }, [activePractice]);
 
   // Voice Communication & Permissions State (LiveKit Cloud & Web Audio PCM Relay Engine)
   const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
@@ -126,9 +131,17 @@ export const StudentClassroom: React.FC = () => {
         setActivePractice(data.activePractice);
         setIsPracticeEnabled(true);
         setIsSessionEnded(false);
-        setPracticeCode("# Write your Python solution below\n\n");
+
+        // Preserve existing practice code if student has already started writing
+        setPracticeCode((prev) => {
+          if (!prev || prev.trim() === "" || prev === "# Write your Python solution below\n\n") {
+            return data.activePractice?.starterCode || "# Write your Python solution below\n\n";
+          }
+          return prev;
+        });
+
         if (data.activePractice.exampleInput && data.activePractice.exampleInput !== "None") {
-          setPracticeStdin(data.activePractice.exampleInput);
+          setPracticeStdin((prev) => prev || data.activePractice?.exampleInput || "");
         }
       }
     };
@@ -206,10 +219,26 @@ export const StudentClassroom: React.FC = () => {
     const handlePracticeStarted = (data: { practice: PracticeProblem; roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       console.log("[StudentClassroom] Practice Session Started:", data.practice.title);
+
+      const initialCode = data.practice.starterCode || "# Write your Python solution below\n\n";
+
       setActivePractice(data.practice);
       setIsPracticeEnabled(true);
       setIsSessionEnded(false);
-      setPracticeCode("# Write your Python solution below\n\n");
+
+      // Preserve existing code if receiving event for same practice problem
+      setPracticeCode((prev) => {
+        if (
+          activePracticeRef.current?.id === data.practice.id &&
+          prev &&
+          prev !== "# Write your Python solution below\n\n" &&
+          prev.trim().length > 0
+        ) {
+          return prev;
+        }
+        return initialCode;
+      });
+
       setHintResult(null);
       setIsHintPanelOpen(false);
 
@@ -292,6 +321,12 @@ export const StudentClassroom: React.FC = () => {
               if (res.roomState.activePractice) {
                 setActivePractice(res.roomState.activePractice);
                 setIsPracticeEnabled(true);
+                setPracticeCode((prev) => {
+                  if (!prev || prev.trim() === "" || prev === "# Write your Python solution below\n\n") {
+                    return res.roomState.activePractice.starterCode || "# Write your Python solution below\n\n";
+                  }
+                  return prev;
+                });
               }
             }
           } else if (res && !res.success) {

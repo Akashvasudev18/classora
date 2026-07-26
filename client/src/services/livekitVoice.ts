@@ -231,7 +231,6 @@ class OpenRelayWebRTCEngine {
 
     pc.ontrack = (event) => {
       console.log("[WebRTCVoice] 🔊 Incoming remote Opus voice track attached!");
-      const ctx = getGlobalAudioContext();
       const el = document.createElement("audio");
       el.autoplay = true;
       (el as any).playsInline = true;
@@ -323,10 +322,11 @@ class WebAudioPCMEngine {
 
         for (let i = 0; i < inputData.length; i++) {
           const s = Math.max(-1, Math.min(1, inputData[i]));
-          if (Math.abs(s) > 0.01) hasSound = true;
+          if (Math.abs(s) > 0.015) hasSound = true;
           pcmSamples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
+        // Only emit when active speech is detected
         if (hasSound) {
           socket.emit("broadcast-pcm-audio", {
             roomId: this.currentRoomId,
@@ -365,7 +365,7 @@ class WebAudioPCMEngine {
   private bindSocketListeners() {
     socket.off("receive-pcm-audio");
     socket.on("receive-pcm-audio", ({ pcmSamples, sampleRate, roomId, senderSocketId }: { pcmSamples: number[]; sampleRate: number; roomId?: string; senderSocketId?: string }) => {
-      // 1. CRITICAL SELF-AUDIO FILTER: Ignore audio sent by yourself to PREVENT INFINITE ECHO REPETITION LOOP!
+      // 1. CRITICAL SELF-AUDIO FILTER: Ignore audio sent by yourself to PREVENT REPETITIVE TRAIL VOICE!
       if (senderSocketId === socket.id) return;
       if (roomId && roomId.toUpperCase() !== this.currentRoomId) return;
       if (!pcmSamples || pcmSamples.length === 0) return;
@@ -468,15 +468,23 @@ export class LiveKitVoiceManager {
       console.warn("[LiveKitVoice] LiveKit Cloud unavailable. Activating OpenRelay WebRTC Voice Engine fallback...");
     }
 
-    // 2. Primary Engine Fallback: OpenRelay WebRTC Engine with Global TURN Relays
+    // 2. Single Active Fallback Engine: OpenRelay WebRTC Engine ONLY
     console.log(`[LiveKitVoice] Initializing OpenRelay WebRTC Engine for room "${roomId}"...`);
     const okWebRTC = await this.webrtcEngine.init(roomId, isTeacher);
-    await this.pcmEngine.init(roomId, identity, isTeacher);
 
-    this.isConnected = okWebRTC;
-    this.voiceMode = "webrtc";
-    if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(okWebRTC);
-    return okWebRTC;
+    if (okWebRTC) {
+      this.isConnected = true;
+      this.voiceMode = "webrtc";
+    } else {
+      // Use PCM Engine ONLY if WebRTC fails to initialize
+      console.log(`[LiveKitVoice] WebRTC failed. Initializing PCM Engine for room "${roomId}"...`);
+      const okPCM = await this.pcmEngine.init(roomId, identity, isTeacher);
+      this.isConnected = okPCM;
+      this.voiceMode = "pcm";
+    }
+
+    if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(this.isConnected);
+    return this.isConnected;
   }
 
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {
@@ -485,15 +493,20 @@ export class LiveKitVoiceManager {
         await this.room.localParticipant.setMicrophoneEnabled(enabled);
         return true;
       } catch (err) {}
+    } else if (this.voiceMode === "webrtc") {
+      await this.webrtcEngine.setMicrophoneEnabled(enabled);
+      return true;
+    } else if (this.voiceMode === "pcm") {
+      await this.pcmEngine.setMicrophoneEnabled(enabled);
+      return true;
     }
-
-    await this.webrtcEngine.setMicrophoneEnabled(enabled);
-    await this.pcmEngine.setMicrophoneEnabled(enabled);
     return true;
   }
 
   public initiatePeerConnection(targetSocketId: string) {
-    this.webrtcEngine.initiatePeerConnection(targetSocketId);
+    if (this.voiceMode === "webrtc") {
+      this.webrtcEngine.initiatePeerConnection(targetSocketId);
+    }
   }
 
   public onActiveSpeakersChange(cb: (speakers: string[]) => void) {

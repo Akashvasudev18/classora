@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Mic, MicOff, Hand, Volume2, ShieldAlert, CheckCircle2, Clock, Settings } from "lucide-react";
-import { getAudioInputDevices, livekitVoiceManager } from "../../services/livekitVoice";
+import { Mic, MicOff, Hand, Volume2, ShieldAlert, CheckCircle2, Clock, Settings, Headphones, VolumeX } from "lucide-react";
+import { getAudioInputDevices, livekitVoiceManager, unlockAudioPlayer } from "../../services/livekitVoice";
 
 interface StudentVoicePanelProps {
   hasHandRaised: boolean;
@@ -8,6 +8,8 @@ interface StudentVoicePanelProps {
   onRaiseHand: () => void;
   onLowerHand: () => void;
   isVoiceConnected: boolean;
+  onConnectTeacherAudio: () => void;
+  isListeningToTeacher: boolean;
 }
 
 export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
@@ -16,6 +18,8 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
   onRaiseHand,
   onLowerHand,
   isVoiceConnected,
+  onConnectTeacherAudio,
+  isListeningToTeacher,
 }) => {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
@@ -35,6 +39,11 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
     const newDeviceId = e.target.value;
     setSelectedDeviceId(newDeviceId);
     livekitVoiceManager.setAudioInputDevice(newDeviceId);
+  };
+
+  const handleListenClick = () => {
+    unlockAudioPlayer();
+    onConnectTeacherAudio();
   };
 
   return (
@@ -91,6 +100,28 @@ export const StudentVoicePanel: React.FC<StudentVoicePanelProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Listen to Teacher Audio Button */}
+        <button
+          onClick={handleListenClick}
+          className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer border active:scale-95 ${
+            isListeningToTeacher
+              ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-emerald-500/20"
+              : "bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white border-indigo-400/50 shadow-indigo-500/20 animate-bounce"
+          }`}
+        >
+          {isListeningToTeacher ? (
+            <>
+              <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span>Listening to Teacher 🟢</span>
+            </>
+          ) : (
+            <>
+              <Headphones className="w-4 h-4 text-indigo-200" />
+              <span>Listen to Teacher Audio 🎧</span>
+            </>
+          )}
+        </button>
 
         {/* Microphone Input Device Selector Dropdown for Student */}
         {audioDevices.length > 0 && (

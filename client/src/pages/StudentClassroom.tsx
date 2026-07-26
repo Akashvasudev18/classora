@@ -49,6 +49,7 @@ export const StudentClassroom: React.FC = () => {
   const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
   const [hasHandRaised, setHasHandRaised] = useState<boolean>(false);
   const [isSpeakingPermitted, setIsSpeakingPermitted] = useState<boolean>(false);
+  const [isListeningToTeacher, setIsListeningToTeacher] = useState<boolean>(false);
   const [raisedHands, setRaisedHands] = useState<string[]>([]);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
 
@@ -121,10 +122,7 @@ export const StudentClassroom: React.FC = () => {
       console.log(`[StudentClassroom] Approved by host for room ${currentRoomId}`);
       setStatus("approved");
       unlockAudioPlayer();
-      initVoice().then(() => {
-        // Request Teacher audio offer immediately from host upon approval
-        socket.emit("request-teacher-audio", { roomId: currentRoomId });
-      });
+      initVoice();
 
       if (data.editorContent !== undefined) {
         setEditorContent(data.editorContent);
@@ -209,7 +207,7 @@ export const StudentClassroom: React.FC = () => {
       setExecutionResult(data);
     };
 
-    // Practice Session Listener (Auto-opens practice mode & clears code to BLANK)
+    // Practice Session Listener
     const handlePracticeStarted = (data: { practice: PracticeProblem; roomId?: string }) => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       console.log("[StudentClassroom] Practice Session Started:", data.practice.title);
@@ -352,6 +350,19 @@ export const StudentClassroom: React.FC = () => {
 
     setIsRequestingHint(false);
     setHintResult(result);
+  };
+
+  // Student Connect / Disconnect Teacher Audio Stream
+  const handleConnectTeacherAudio = () => {
+    unlockAudioPlayer();
+    setIsListeningToTeacher((prev) => {
+      const nextState = !prev;
+      if (nextState) {
+        console.log(`[StudentClassroom] Explicitly connecting to Teacher lecture audio stream in room ${currentRoomId}...`);
+        socket.emit("request-teacher-audio", { roomId: currentRoomId });
+      }
+      return nextState;
+    });
   };
 
   // Student Raise / Lower Hand Handlers
@@ -508,6 +519,8 @@ export const StudentClassroom: React.FC = () => {
           onRaiseHand={handleRaiseHand}
           onLowerHand={handleLowerHand}
           isVoiceConnected={isVoiceConnected}
+          onConnectTeacherAudio={handleConnectTeacherAudio}
+          isListeningToTeacher={isListeningToTeacher}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

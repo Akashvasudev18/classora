@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Users, LogOut, Shield, Code2, Columns, Monitor, Copy } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
@@ -37,6 +37,7 @@ export const StudentClassroom: React.FC = () => {
 
   // Practice Session & Practice IDE State for Student
   const [isPracticeEnabled, setIsPracticeEnabled] = useState<boolean>(false);
+  const [practiceViewMode, setPracticeViewMode] = useState<"split" | "teacher" | "practice">("split");
   const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
   const [isSessionEnded, setIsSessionEnded] = useState<boolean>(false);
   const [practiceCode, setPracticeCode] = useState<string>(
@@ -45,6 +46,18 @@ export const StudentClassroom: React.FC = () => {
   const [practiceStdin, setPracticeStdin] = useState<string>("");
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
   const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
+
+  // Refs for practice state so socket event listeners read fresh state without triggering useEffect re-runs
+  const practiceCodeRef = useRef<string>(practiceCode);
+  const practiceResultRef = useRef<ExecutionResult | null>(practiceResult);
+
+  useEffect(() => {
+    practiceCodeRef.current = practiceCode;
+  }, [practiceCode]);
+
+  useEffect(() => {
+    practiceResultRef.current = practiceResult;
+  }, [practiceResult]);
 
   // Voice Communication & Permissions State (LiveKit Cloud & Web Audio PCM Relay Engine)
   const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
@@ -98,25 +111,6 @@ export const StudentClassroom: React.FC = () => {
     livekitVoiceManager.onConnectionStateChange((connected) => {
       setIsVoiceConnected(connected);
     });
-
-    const emitJoinRequest = () => {
-      realtimeBus.emit(
-        "join-request",
-        { roomId: currentRoomId, studentId, name: studentName },
-        (res: any) => {
-          if (res && res.status === "pending") {
-            // Pending status
-          } else if (res && !res.success) {
-            navigate("/error", {
-              state: { type: "invalid-code", message: res.message },
-            });
-          }
-        }
-      );
-    };
-
-    emitJoinRequest();
-    socket.on("connect", emitJoinRequest);
 
     const handleStudentApproved = (data: { roomId: string; studentId?: string; editorContent: string; activePractice?: PracticeProblem }) => {
       if (data.studentId && data.studentId !== studentId) return;
@@ -237,8 +231,8 @@ export const StudentClassroom: React.FC = () => {
         teacherSocketId: data.teacherSocketId,
         studentId,
         studentName,
-        code: practiceCode,
-        terminalResult: practiceResult,
+        code: practiceCodeRef.current,
+        terminalResult: practiceResultRef.current,
       });
     };
 
@@ -264,6 +258,7 @@ export const StudentClassroom: React.FC = () => {
       });
     };
 
+    // 1. Attach ALL event listeners FIRST before sending join-request
     realtimeBus.on("student-approved", handleStudentApproved);
     realtimeBus.on("student-rejected", handleStudentRejected);
     realtimeBus.on("editor-update", handleEditorUpdate);
@@ -281,6 +276,35 @@ export const StudentClassroom: React.FC = () => {
     realtimeBus.on("teacher-edited-code", handleTeacherEditedMyCode);
     realtimeBus.on("room-ended", handleRoomEnded);
     realtimeBus.on("teacher-disconnected", handleTeacherDisconnected);
+
+    // 2. NOW emit join-request and sync initial room state
+    const emitJoinRequest = () => {
+      realtimeBus.emit(
+        "join-request",
+        { roomId: currentRoomId, studentId, name: studentName },
+        (res: any) => {
+          if (res && res.roomState) {
+            if (res.roomState.editorContent !== undefined) {
+              setEditorContent(res.roomState.editorContent);
+            }
+            if (res.status === "approved" || (res.roomState.students && res.roomState.students.some((s: any) => s.id === studentId))) {
+              setStatus("approved");
+              if (res.roomState.activePractice) {
+                setActivePractice(res.roomState.activePractice);
+                setIsPracticeEnabled(true);
+              }
+            }
+          } else if (res && !res.success) {
+            navigate("/error", {
+              state: { type: "invalid-code", message: res.message },
+            });
+          }
+        }
+      );
+    };
+
+    emitJoinRequest();
+    socket.on("connect", emitJoinRequest);
 
     return () => {
       livekitVoiceManager.disconnect();
@@ -303,7 +327,7 @@ export const StudentClassroom: React.FC = () => {
       realtimeBus.off("room-ended", handleRoomEnded);
       realtimeBus.off("teacher-disconnected", handleTeacherDisconnected);
     };
-  }, [currentRoomId, studentId, studentName, practiceCode, practiceResult, navigate]);
+  }, [currentRoomId, studentId, studentName, navigate]);
 
   const handleClearTeacherTerminal = () => {
     setExecutionResult(null);
@@ -466,9 +490,57 @@ export const StudentClassroom: React.FC = () => {
 
         {/* Center / Right Controls */}
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Practice View Mode Switcher (Visible when Practice is enabled) */}
+          {isPracticeEnabled && (
+            <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setPracticeViewMode("split")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  practiceViewMode === "split"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+                title="Split Screen View"
+              >
+                <Columns className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Split</span>
+              </button>
+              <button
+                onClick={() => setPracticeViewMode("teacher")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  practiceViewMode === "teacher"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+                title="Teacher Editor Full Screen"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Teacher View</span>
+              </button>
+              <button
+                onClick={() => setPracticeViewMode("practice")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  practiceViewMode === "practice"
+                    ? "bg-cyan-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+                title="My Practice Editor Full Screen"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">My Practice</span>
+              </button>
+            </div>
+          )}
+
           {/* Practice Toggle Button */}
           <button
-            onClick={() => setIsPracticeEnabled((prev) => !prev)}
+            onClick={() => {
+              setIsPracticeEnabled((prev) => {
+                const next = !prev;
+                if (next) setPracticeViewMode("split");
+                return next;
+              });
+            }}
             className={`px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer border ${
               isPracticeEnabled
                 ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-cyan-400/40 shadow-cyan-500/20"
@@ -540,8 +612,58 @@ export const StudentClassroom: React.FC = () => {
                 stdin={executionResult?.stdin || ""}
               />
             </div>
+          ) : practiceViewMode === "teacher" ? (
+            /* Full-Width Teacher Broadcast View in Practice Mode */
+            <div className="flex-1 flex flex-col min-h-0 space-y-3">
+              <div className="flex items-center justify-between bg-indigo-950/40 border border-indigo-500/20 px-4 py-2 rounded-xl text-xs text-indigo-300">
+                <span>Focus View: Teacher Live Broadcast</span>
+                <button
+                  onClick={handleForkTeacherCode}
+                  className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Fork Teacher Code</span>
+                </button>
+              </div>
+              <LiveEditor
+                value={editorContent}
+                isHost={false}
+                isExecuting={isExecuting}
+                executionResult={executionResult}
+                onClearTerminal={handleClearTeacherTerminal}
+                stdin={executionResult?.stdin || ""}
+              />
+            </div>
+          ) : practiceViewMode === "practice" ? (
+            /* Full-Width Student Practice View */
+            <div className="flex-1 flex flex-col min-h-0 space-y-4">
+              {activePractice && (
+                <ProblemPanel
+                  problem={activePractice}
+                  onUseExampleInput={(input) => setPracticeStdin(input)}
+                  isSessionEnded={isSessionEnded}
+                />
+              )}
+              <PracticeEditor
+                value={practiceCode}
+                onChange={setPracticeCode}
+                onFork={handleForkTeacherCode}
+                onRun={handleRunPracticeCode}
+                isExecuting={isPracticeExecuting}
+                executionResult={practiceResult}
+                onClearTerminal={handleClearPracticeTerminal}
+                stdin={practiceStdin}
+                onChangeStdin={setPracticeStdin}
+                onGetHint={handleGetAIHint}
+                isRequestingHint={isRequestingHint}
+                hintResult={hintResult}
+                isHintPanelOpen={isHintPanelOpen}
+                onToggleHintPanel={() => setIsHintPanelOpen((prev) => !prev)}
+                onCloseHintPanel={() => setIsHintPanelOpen(false)}
+              />
+            </div>
           ) : (
-            /* Resizable Split-Screen View (When Practice ON) */
+            /* Resizable Split-Screen View (Default Practice ON) */
             <div className="flex-1 flex flex-col min-h-0">
               <ResizableSplitLayout
                 left={
@@ -555,7 +677,7 @@ export const StudentClassroom: React.FC = () => {
                   />
                 }
                 right={
-                  <div className="space-y-4 flex flex-col flex-1">
+                  <div className="space-y-4 flex flex-col flex-1 min-h-0">
                     {/* Problem Panel (Rendered when activePractice session is running) */}
                     {activePractice && (
                       <ProblemPanel

@@ -111,7 +111,7 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
           defaultLanguage="python"
           language="python"
           theme="vs-dark"
-          value={value}
+          value={value !== undefined && value !== null ? value : "# Welcome to Classora Live Python Classroom!\n# Live Python code broadcast by teacher appears here.\n"}
           onChange={handleEditorChange}
           options={{
             readOnly: !isHost,

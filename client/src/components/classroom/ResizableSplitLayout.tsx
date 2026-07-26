@@ -5,20 +5,32 @@ interface ResizableSplitLayoutProps {
   left: React.ReactNode;
   right: React.ReactNode;
   initialRatio?: number; // Initial left width percentage (0 to 100), default 50
-  minRatio?: number; // Min percentage (default 25)
-  maxRatio?: number; // Max percentage (default 75)
+  minRatio?: number; // Min percentage (default 20)
+  maxRatio?: number; // Max percentage (default 80)
 }
 
 export const ResizableSplitLayout: React.FC<ResizableSplitLayoutProps> = ({
   left,
   right,
   initialRatio = 50,
-  minRatio = 25,
-  maxRatio = 75,
+  minRatio = 20,
+  maxRatio = 80,
 }) => {
   const [leftRatio, setLeftRatio] = useState<number>(initialRatio);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isDesktop, setIsDesktop] = useState<boolean>(
+    typeof window !== "undefined" ? window.innerWidth >= 1024 : true
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -89,12 +101,12 @@ export const ResizableSplitLayout: React.FC<ResizableSplitLayoutProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex flex-col lg:flex-row w-full select-none gap-4 lg:gap-0 relative"
+      className="flex flex-col lg:flex-row w-full select-none gap-4 lg:gap-0 relative flex-1 min-h-0"
     >
       {/* Left Panel: Teacher Live Broadcast */}
       <div
-        style={{ width: `${leftRatio}%` }}
-        className="w-full lg:w-auto flex-1 lg:flex-initial min-w-0"
+        style={isDesktop ? { width: `${leftRatio}%` } : undefined}
+        className="w-full lg:w-auto flex-1 lg:flex-initial min-w-0 flex flex-col"
       >
         {left}
       </div>
@@ -103,7 +115,7 @@ export const ResizableSplitLayout: React.FC<ResizableSplitLayoutProps> = ({
       <div
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
-        className={`hidden lg:flex w-3 hover:w-4 group cursor-col-resize items-center justify-center relative z-20 transition-all ${
+        className={`hidden lg:flex w-3 hover:w-4 group cursor-col-resize items-center justify-center relative z-20 transition-all shrink-0 ${
           isDragging ? "bg-cyan-500/20" : "hover:bg-slate-800/80"
         }`}
         title="Drag to resize split workspace"
@@ -115,8 +127,8 @@ export const ResizableSplitLayout: React.FC<ResizableSplitLayoutProps> = ({
 
       {/* Right Panel: Student Practice Workspace */}
       <div
-        style={{ width: `${100 - leftRatio}%` }}
-        className="w-full lg:w-auto flex-1 lg:flex-initial min-w-0"
+        style={isDesktop ? { width: `${100 - leftRatio}%` } : undefined}
+        className="w-full lg:w-auto flex-1 lg:flex-initial min-w-0 flex flex-col"
       >
         {right}
       </div>

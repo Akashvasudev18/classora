@@ -76,6 +76,28 @@ export const setupSocketHandlers = (io: Server) => {
         room = roomManager.createRoom(cleanRoomId, "");
       }
 
+      // Check if student is ALREADY approved in this room (reconnection or existing session)
+      const existingApproved = room.students.find(s => s.id === studentId || (studentId && s.id === studentId));
+      if (existingApproved) {
+        existingApproved.socketId = socket.id;
+        socket.join(cleanRoomId);
+        console.log(`[Join Request] Student "${existingApproved.name}" (${existingApproved.id}) reconnected to ${cleanRoomId}. Syncing current state.`);
+
+        const approvalPayload = {
+          roomId: cleanRoomId,
+          studentId: existingApproved.id,
+          editorContent: room.editorContent,
+          activePractice: room.activePractice,
+        };
+
+        socket.emit("student-approved", approvalPayload);
+
+        if (typeof callback === "function") {
+          callback({ success: true, status: "approved", studentId: existingApproved.id, roomState: room });
+        }
+        return;
+      }
+
       const student = { id: studentId || uuidv4(), name: name || "Student", socketId: socket.id };
       roomManager.addPendingStudent(cleanRoomId, student);
       socket.join(cleanRoomId);

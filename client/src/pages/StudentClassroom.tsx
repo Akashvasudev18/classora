@@ -5,7 +5,7 @@ import { socket, useSocketStatus } from "../services/socket";
 import { realtimeBus } from "../services/realtimeBus";
 import { runPythonCode, ExecutionResult } from "../services/ExecutionService";
 import { requestAIHint, HintResponseResult } from "../services/AIService";
-import { fetchLiveKitToken, livekitVoiceManager } from "../services/livekitVoice";
+import { fetchLiveKitToken, livekitVoiceManager, unlockAudioPlayer } from "../services/livekitVoice";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { LiveEditor } from "../components/classroom/LiveEditor";
@@ -76,6 +76,8 @@ export const StudentClassroom: React.FC = () => {
   useEffect(() => {
     if (!currentRoomId) return;
 
+    unlockAudioPlayer();
+
     // Connect LiveKit Cloud Voice on Student Approval
     const initVoice = async () => {
       console.log(`[StudentClassroom] Requesting LiveKit voice token for room ${currentRoomId} as "${studentName}"...`);
@@ -113,6 +115,7 @@ export const StudentClassroom: React.FC = () => {
       if (data.studentId && data.studentId !== studentId) return;
       console.log(`[StudentClassroom] Approved by host for room ${currentRoomId}`);
       setStatus("approved");
+      unlockAudioPlayer();
       initVoice();
 
       if (data.editorContent !== undefined) {
@@ -172,6 +175,7 @@ export const StudentClassroom: React.FC = () => {
 
     const handleSpeakerPermissionGranted = () => {
       console.log("[StudentClassroom] Speaker permission GRANTED by teacher! Unmuting microphone...");
+      unlockAudioPlayer();
       setIsSpeakingPermitted(true);
       setHasHandRaised(false);
       livekitVoiceManager.setMicrophoneEnabled(true);
@@ -347,6 +351,7 @@ export const StudentClassroom: React.FC = () => {
   // Student Raise / Lower Hand Handlers
   const handleRaiseHand = () => {
     console.log("[StudentClassroom] Raising hand...");
+    unlockAudioPlayer();
     setHasHandRaised(true);
     realtimeBus.emit("raise-hand", { roomId: currentRoomId, studentId });
   };

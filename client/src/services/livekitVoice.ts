@@ -44,7 +44,46 @@ export async function fetchLiveKitToken(
   }
 }
 
-// Built-in WebRTC Audio Engine (Zero-Config Fallback)
+// Global Audio Player & Autoplay Policy Unlocker
+let remoteAudioElement: HTMLAudioElement | null = null;
+
+export function unlockAudioPlayer(): HTMLAudioElement {
+  if (!remoteAudioElement) {
+    let existing = document.getElementById("classora-remote-voice-player") as HTMLAudioElement;
+    if (existing) {
+      remoteAudioElement = existing;
+    } else {
+      remoteAudioElement = document.createElement("audio");
+      remoteAudioElement.id = "classora-remote-voice-player";
+      remoteAudioElement.autoplay = true;
+      (remoteAudioElement as any).playsInline = true;
+      remoteAudioElement.style.display = "none";
+      document.body.appendChild(remoteAudioElement);
+    }
+  }
+
+  // Attempt to unlock AudioContext on user gesture
+  if (remoteAudioElement) {
+    remoteAudioElement.play().catch(() => {
+      // Audio play blocked until user gesture, which is normal
+    });
+  }
+
+  return remoteAudioElement;
+}
+
+// Global window click listener to guarantee browser autoplay policy is unlocked on first user click
+if (typeof window !== "undefined") {
+  const handleUserGesture = () => {
+    unlockAudioPlayer();
+    window.removeEventListener("click", handleUserGesture);
+    window.removeEventListener("touchstart", handleUserGesture);
+  };
+  window.addEventListener("click", handleUserGesture);
+  window.addEventListener("touchstart", handleUserGesture);
+}
+
+// Built-in WebRTC Audio Engine (Zero-Config Peer Audio Streaming)
 class BuiltInAudioEngine {
   private localStream: MediaStream | null = null;
   private peerConnections: { [socketId: string]: RTCPeerConnection } = {};
@@ -54,14 +93,22 @@ class BuiltInAudioEngine {
   public async init(isTeacher: boolean): Promise<boolean> {
     this.isTeacher = isTeacher;
     this.isMicEnabled = isTeacher; // Teacher mic enabled by default; Student mic muted by default
+    unlockAudioPlayer();
 
     try {
       if (isTeacher) {
-        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        console.log("[BuiltInVoice] Microphone access granted for Teacher audio stream");
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+        console.log("[BuiltInVoice] Teacher microphone stream initialized");
       }
     } catch (err) {
-      console.warn("[BuiltInVoice] Microphones not accessible or permission pending:", err);
+      console.warn("[BuiltInVoice] Microphone permission pending or unavailable:", err);
     }
 
     this.bindSocketListeners();
@@ -72,7 +119,14 @@ class BuiltInAudioEngine {
     this.isMicEnabled = enabled;
     try {
       if (enabled && !this.localStream) {
-        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
       }
 
       if (this.localStream) {
@@ -80,7 +134,8 @@ class BuiltInAudioEngine {
           track.enabled = enabled;
         });
       }
-      console.log(`[BuiltInVoice] Microphone toggled to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
+
+      console.log(`[BuiltInVoice] Local microphone state updated to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
       return true;
     } catch (err) {
       console.error("[BuiltInVoice] Error toggling microphone track:", err);
@@ -88,9 +143,24 @@ class BuiltInAudioEngine {
     }
   }
 
+  public async initiatePeerConnection(targetSocketId: string) {
+    if (!targetSocketId) return;
+    console.log(`[BuiltInVoice] Initiating WebRTC peer connection offer to socket: ${targetSocketId}`);
+    try {
+      const pc = this.createPeerConnection(targetSocketId);
+      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      await pc.setLocalDescription(offer);
+
+      socket.emit("webrtc-offer", { targetSocketId, offer });
+    } catch (err) {
+      console.error("[BuiltInVoice] Error creating WebRTC offer:", err);
+    }
+  }
+
   private bindSocketListeners() {
     socket.on("webrtc-offer", async ({ offer, senderSocketId }: { offer: any; senderSocketId: string }) => {
       try {
+        console.log(`[BuiltInVoice] Received WebRTC offer from socket: ${senderSocketId}`);
         const pc = this.createPeerConnection(senderSocketId);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
@@ -104,6 +174,7 @@ class BuiltInAudioEngine {
 
     socket.on("webrtc-answer", async ({ answer, senderSocketId }: { answer: any; senderSocketId: string }) => {
       try {
+        console.log(`[BuiltInVoice] Received WebRTC answer from socket: ${senderSocketId}`);
         const pc = this.peerConnections[senderSocketId];
         if (pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
@@ -123,13 +194,31 @@ class BuiltInAudioEngine {
         console.error("[BuiltInVoice] Error adding ICE candidate:", err);
       }
     });
+
+    // When speaker permission is granted to a student, student initiates offer to teacher
+    socket.on("speaker-permission-granted", async () => {
+      if (!this.isTeacher) {
+        console.log("[BuiltInVoice] Student permission granted! Enabling mic & starting peer connection...");
+        await this.setMicrophoneEnabled(true);
+        socket.emit("get-room-state", { roomId: "" }, (res: any) => {
+          if (res?.roomState?.teacherSocket) {
+            this.initiatePeerConnection(res.roomState.teacherSocket);
+          }
+        });
+      }
+    });
   }
 
   private createPeerConnection(targetSocketId: string): RTCPeerConnection {
+    if (this.peerConnections[targetSocketId]) {
+      this.peerConnections[targetSocketId].close();
+    }
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
       ],
     });
 
@@ -146,12 +235,12 @@ class BuiltInAudioEngine {
     };
 
     pc.ontrack = (event) => {
-      console.log("[BuiltInVoice] Received incoming audio stream track from peer");
-      const audioEl = document.createElement("audio");
-      audioEl.srcObject = event.streams[0];
-      audioEl.autoplay = true;
-      audioEl.style.display = "none";
-      document.body.appendChild(audioEl);
+      console.log("[BuiltInVoice] 🔊 Received incoming remote audio stream! Playing through global voice player...");
+      const player = unlockAudioPlayer();
+      player.srcObject = event.streams[0];
+      player.play().catch((err) => {
+        console.warn("[BuiltInVoice] Play error (awaiting user gesture):", err);
+      });
     };
 
     this.peerConnections[targetSocketId] = pc;
@@ -178,6 +267,8 @@ export class LiveKitVoiceManager {
   private onConnectionStateChangeCb?: (connected: boolean) => void;
 
   public async connect(wsUrl: string, token: string, isTeacher: boolean): Promise<boolean> {
+    unlockAudioPlayer();
+
     try {
       // 1. Attempt Primary Connection: LiveKit Cloud
       if (wsUrl && !wsUrl.includes("demo.livekit.cloud") && token) {
@@ -209,11 +300,11 @@ export class LiveKitVoiceManager {
           if (this.onActiveSpeakersChangeCb) this.onActiveSpeakersChangeCb(identities);
         });
 
-        this.room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+        this.room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
-            const element = track.attach();
-            element.style.display = "none";
-            document.body.appendChild(element);
+            const player = unlockAudioPlayer();
+            track.attach(player);
+            player.play().catch(() => {});
           }
         });
 
@@ -235,6 +326,12 @@ export class LiveKitVoiceManager {
     this.voiceMode = "builtin";
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(ok);
     return ok;
+  }
+
+  public initiateBuiltInPeerConnection(targetSocketId: string) {
+    if (this.voiceMode === "builtin") {
+      this.audioEngine.initiatePeerConnection(targetSocketId);
+    }
   }
 
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {

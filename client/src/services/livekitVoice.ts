@@ -44,7 +44,7 @@ export async function fetchLiveKitToken(
   }
 }
 
-// Global Audio Player & Autoplay Policy Unlocker
+// Global Audio Element & Autoplay Policy Unlocker
 let remoteAudioElement: HTMLAudioElement | null = null;
 
 export function unlockAudioPlayer(): HTMLAudioElement {
@@ -65,7 +65,7 @@ export function unlockAudioPlayer(): HTMLAudioElement {
   // Attempt to unlock AudioContext on user gesture
   if (remoteAudioElement) {
     remoteAudioElement.play().catch(() => {
-      // Audio play blocked until user gesture, which is normal
+      // Audio play blocked until user gesture
     });
   }
 
@@ -83,42 +83,47 @@ if (typeof window !== "undefined") {
   window.addEventListener("touchstart", handleUserGesture);
 }
 
-// Built-in WebRTC Audio Engine (Zero-Config Peer Audio Streaming)
-class BuiltInAudioEngine {
+// Socket.IO Web Audio Relay Engine (Guaranteed Mobile & Cross-Tab Voice Audio)
+class SocketAudioRelayEngine {
   private localStream: MediaStream | null = null;
-  private peerConnections: { [socketId: string]: RTCPeerConnection } = {};
+  private mediaRecorder: MediaRecorder | null = null;
   private isTeacher: boolean = false;
   private isMicEnabled: boolean = false;
+  private currentRoomId: string = "";
+  private senderName: string = "Speaker";
+  private audioQueue: string[] = [];
+  private isPlayingQueue: boolean = false;
 
-  public async init(isTeacher: boolean): Promise<boolean> {
+  public async init(roomId: string, senderName: string, isTeacher: boolean): Promise<boolean> {
+    this.currentRoomId = (roomId || "DEMO").toUpperCase();
+    this.senderName = senderName || (isTeacher ? "Teacher" : "Student");
     this.isTeacher = isTeacher;
-    this.isMicEnabled = isTeacher; // Teacher mic enabled by default; Student mic muted by default
+    this.isMicEnabled = isTeacher;
     unlockAudioPlayer();
 
-    try {
-      if (isTeacher) {
-        this.localStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-          video: false,
-        });
-        console.log("[BuiltInVoice] Teacher microphone stream initialized");
-      }
-    } catch (err) {
-      console.warn("[BuiltInVoice] Microphone permission pending or unavailable:", err);
+    this.bindSocketListeners();
+
+    if (isTeacher) {
+      await this.startMicrophoneRecording();
     }
 
-    this.bindSocketListeners();
     return true;
   }
 
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {
     this.isMicEnabled = enabled;
+    if (enabled) {
+      await this.startMicrophoneRecording();
+    } else {
+      this.stopMicrophoneRecording();
+    }
+    console.log(`[AudioRelay] Microphone set to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
+    return true;
+  }
+
+  private async startMicrophoneRecording() {
     try {
-      if (enabled && !this.localStream) {
+      if (!this.localStream) {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -129,144 +134,123 @@ class BuiltInAudioEngine {
         });
       }
 
-      if (this.localStream) {
-        this.localStream.getAudioTracks().forEach((track) => {
-          track.enabled = enabled;
-        });
+      this.stopMicrophoneRecording();
+
+      // Find supported MIME type for cross-platform audio (Opus / WebM / MP4 / AAC)
+      const options: MediaRecorderOptions = {};
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          options.mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          options.mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/aac")) {
+          options.mimeType = "audio/aac";
+        }
       }
 
-      console.log(`[BuiltInVoice] Local microphone state updated to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
-      return true;
+      this.mediaRecorder = new MediaRecorder(this.localStream, options);
+
+      this.mediaRecorder.ondataavailable = async (event: BlobEvent) => {
+        if (event.data && event.data.size > 0 && this.isMicEnabled) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Data = reader.result as string;
+            socket.emit("broadcast-voice-chunk", {
+              roomId: this.currentRoomId,
+              audioBuffer: base64Data,
+              senderName: this.senderName,
+              isTeacher: this.isTeacher,
+            });
+          };
+          reader.readAsDataURL(event.data);
+        }
+      };
+
+      // Record in 250ms continuous audio slices
+      this.mediaRecorder.start(250);
+      console.log(`[AudioRelay] Recording audio slices (250ms) using mimeType: ${options.mimeType || "default"}`);
     } catch (err) {
-      console.error("[BuiltInVoice] Error toggling microphone track:", err);
-      return false;
+      console.warn("[AudioRelay] Error accessing microphone:", err);
     }
   }
 
-  public async initiatePeerConnection(targetSocketId: string) {
-    if (!targetSocketId) return;
-    console.log(`[BuiltInVoice] Initiating WebRTC peer connection offer to socket: ${targetSocketId}`);
-    try {
-      const pc = this.createPeerConnection(targetSocketId);
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
-      await pc.setLocalDescription(offer);
-
-      socket.emit("webrtc-offer", { targetSocketId, offer });
-    } catch (err) {
-      console.error("[BuiltInVoice] Error creating WebRTC offer:", err);
+  private stopMicrophoneRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+      try {
+        this.mediaRecorder.stop();
+      } catch (e) {}
+      this.mediaRecorder = null;
     }
   }
 
   private bindSocketListeners() {
-    socket.on("webrtc-offer", async ({ offer, senderSocketId }: { offer: any; senderSocketId: string }) => {
-      try {
-        console.log(`[BuiltInVoice] Received WebRTC offer from socket: ${senderSocketId}`);
-        const pc = this.createPeerConnection(senderSocketId);
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socket.emit("webrtc-answer", { targetSocketId: senderSocketId, answer });
-      } catch (err) {
-        console.error("[BuiltInVoice] Error handling WebRTC offer:", err);
-      }
-    });
-
-    socket.on("webrtc-answer", async ({ answer, senderSocketId }: { answer: any; senderSocketId: string }) => {
-      try {
-        console.log(`[BuiltInVoice] Received WebRTC answer from socket: ${senderSocketId}`);
-        const pc = this.peerConnections[senderSocketId];
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-      } catch (err) {
-        console.error("[BuiltInVoice] Error handling WebRTC answer:", err);
-      }
-    });
-
-    socket.on("webrtc-ice-candidate", async ({ candidate, senderSocketId }: { candidate: any; senderSocketId: string }) => {
-      try {
-        const pc = this.peerConnections[senderSocketId];
-        if (pc && candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-      } catch (err) {
-        console.error("[BuiltInVoice] Error adding ICE candidate:", err);
-      }
-    });
-
-    // When speaker permission is granted to a student, student initiates offer to teacher
-    socket.on("speaker-permission-granted", async () => {
-      if (!this.isTeacher) {
-        console.log("[BuiltInVoice] Student permission granted! Enabling mic & starting peer connection...");
-        await this.setMicrophoneEnabled(true);
-        socket.emit("get-room-state", { roomId: "" }, (res: any) => {
-          if (res?.roomState?.teacherSocket) {
-            this.initiatePeerConnection(res.roomState.teacherSocket);
-          }
-        });
+    socket.off("receive-voice-chunk");
+    socket.on("receive-voice-chunk", ({ audioBuffer }: { audioBuffer: string }) => {
+      if (audioBuffer) {
+        this.audioQueue.push(audioBuffer);
+        this.processAudioQueue();
       }
     });
   }
 
-  private createPeerConnection(targetSocketId: string): RTCPeerConnection {
-    if (this.peerConnections[targetSocketId]) {
-      this.peerConnections[targetSocketId].close();
-    }
+  private async processAudioQueue() {
+    if (this.isPlayingQueue || this.audioQueue.length === 0) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-      ],
-    });
+    this.isPlayingQueue = true;
+    const nextChunk = this.audioQueue.shift();
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, this.localStream!);
-      });
-    }
+    if (nextChunk) {
+      try {
+        const audio = new Audio(nextChunk);
+        audio.autoplay = true;
+        (audio as any).playsInline = true;
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("webrtc-ice-candidate", { targetSocketId, candidate: event.candidate });
+        audio.onended = () => {
+          this.isPlayingQueue = false;
+          this.processAudioQueue();
+        };
+
+        audio.onerror = () => {
+          this.isPlayingQueue = false;
+          this.processAudioQueue();
+        };
+
+        await audio.play().catch(() => {
+          // Autoplay policy fallback
+          this.isPlayingQueue = false;
+          this.processAudioQueue();
+        });
+      } catch (err) {
+        this.isPlayingQueue = false;
+        this.processAudioQueue();
       }
-    };
-
-    pc.ontrack = (event) => {
-      console.log("[BuiltInVoice] 🔊 Received incoming remote audio stream! Playing through global voice player...");
-      const player = unlockAudioPlayer();
-      player.srcObject = event.streams[0];
-      player.play().catch((err) => {
-        console.warn("[BuiltInVoice] Play error (awaiting user gesture):", err);
-      });
-    };
-
-    this.peerConnections[targetSocketId] = pc;
-    return pc;
+    } else {
+      this.isPlayingQueue = false;
+    }
   }
 
   public cleanup() {
+    this.stopMicrophoneRecording();
     if (this.localStream) {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
     }
-    Object.values(this.peerConnections).forEach((pc) => pc.close());
-    this.peerConnections = {};
+    socket.off("receive-voice-chunk");
+    this.audioQueue = [];
+    this.isPlayingQueue = false;
   }
 }
 
 export class LiveKitVoiceManager {
   private room: Room | null = null;
   private isConnected: boolean = false;
-  private voiceMode: "livekit" | "builtin" = "builtin";
+  private voiceMode: "livekit" | "relay" = "relay";
   private activeSpeakers: string[] = [];
-  private audioEngine: BuiltInAudioEngine = new BuiltInAudioEngine();
+  private relayEngine: SocketAudioRelayEngine = new SocketAudioRelayEngine();
   private onActiveSpeakersChangeCb?: (speakers: string[]) => void;
   private onConnectionStateChangeCb?: (connected: boolean) => void;
 
-  public async connect(wsUrl: string, token: string, isTeacher: boolean): Promise<boolean> {
+  public async connect(wsUrl: string, token: string, isTeacher: boolean, identity: string = "User"): Promise<boolean> {
     unlockAudioPlayer();
 
     try {
@@ -316,22 +300,16 @@ export class LiveKitVoiceManager {
         return true;
       }
     } catch (err) {
-      console.warn("[LiveKitVoice] LiveKit Cloud unavailable or placeholder domain. Activating Built-in WebRTC Audio Engine fallback...");
+      console.warn("[LiveKitVoice] LiveKit Cloud unavailable or placeholder domain. Activating Socket.IO Web Audio Relay Engine fallback...");
     }
 
-    // 2. Seamless Fallback: Built-in WebRTC Voice Engine
-    console.log("[LiveKitVoice] Initializing Built-in WebRTC Voice Engine...");
-    const ok = await this.audioEngine.init(isTeacher);
+    // 2. Guaranteed Fallback: Socket.IO Web Audio Relay Engine (Works on all mobile phones & tabs!)
+    console.log("[LiveKitVoice] Initializing Socket.IO Web Audio Relay Engine...");
+    const ok = await this.relayEngine.init(token || "ROOM", identity, isTeacher);
     this.isConnected = ok;
-    this.voiceMode = "builtin";
+    this.voiceMode = "relay";
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(ok);
     return ok;
-  }
-
-  public initiateBuiltInPeerConnection(targetSocketId: string) {
-    if (this.voiceMode === "builtin") {
-      this.audioEngine.initiatePeerConnection(targetSocketId);
-    }
   }
 
   public async setMicrophoneEnabled(enabled: boolean): Promise<boolean> {
@@ -345,8 +323,8 @@ export class LiveKitVoiceManager {
       }
     }
 
-    // Fallback to Built-in Engine
-    return await this.audioEngine.setMicrophoneEnabled(enabled);
+    // Fallback to Socket.IO Web Audio Relay Engine
+    return await this.relayEngine.setMicrophoneEnabled(enabled);
   }
 
   public onActiveSpeakersChange(cb: (speakers: string[]) => void) {
@@ -361,7 +339,7 @@ export class LiveKitVoiceManager {
     return this.isConnected;
   }
 
-  public getVoiceMode(): "livekit" | "builtin" {
+  public getVoiceMode(): "livekit" | "relay" {
     return this.voiceMode;
   }
 
@@ -374,7 +352,7 @@ export class LiveKitVoiceManager {
       }
       this.room = null;
     }
-    this.audioEngine.cleanup();
+    this.relayEngine.cleanup();
     this.isConnected = false;
   }
 }

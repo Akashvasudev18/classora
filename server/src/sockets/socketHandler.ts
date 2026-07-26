@@ -313,7 +313,20 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    // 9. Built-in WebRTC Audio Signaling Events (Zero-Config Voice Fallback)
+    // 9. Socket.IO Real-Time Web Audio Chunk Relay (Guaranteed Mobile & Cross-Tab Voice Engine)
+    socket.on("broadcast-voice-chunk", ({ roomId, audioBuffer, senderName, isTeacher }: { roomId: string; audioBuffer: any; senderName?: string; isTeacher?: boolean }) => {
+      const cleanRoomId = (roomId || "").toUpperCase();
+      // Broadcast audio chunk to all other sockets in room
+      socket.to(cleanRoomId).emit("receive-voice-chunk", {
+        audioBuffer,
+        senderName: senderName || "Classroom Speaker",
+        senderSocketId: socket.id,
+        isTeacher: !!isTeacher,
+        roomId: cleanRoomId,
+      });
+    });
+
+    // 10. WebRTC Signaling Events
     socket.on("webrtc-offer", ({ roomId, targetSocketId, offer }: { roomId: string; targetSocketId?: string; offer: any }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       if (targetSocketId) {
@@ -337,7 +350,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 10. Teacher Student Code Inspection & Live Assistance Events
+    // 11. Teacher Student Code Inspection & Live Assistance Events
     socket.on("request-student-code", ({ roomId, studentId }: { roomId: string; studentId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       const room = roomManager.getRoom(cleanRoomId);
@@ -393,7 +406,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 11. Code Execution Socket Event with stdin support
+    // 12. Code Execution Socket Event with stdin support
     socket.on("run-code", async ({ roomId, code, stdin }: { roomId: string; code: string; stdin?: string }, callback) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[Run Code] Code execution requested for room ${cleanRoomId} (stdin length: ${(stdin || "").length})`);
@@ -416,7 +429,7 @@ export const setupSocketHandlers = (io: Server) => {
       }
     });
 
-    // 12. End Room Event (Purges memory & notifies everyone)
+    // 13. End Room Event (Purges memory & notifies everyone)
     socket.on("end-room", ({ roomId }: { roomId: string }) => {
       const cleanRoomId = (roomId || "").toUpperCase();
       console.log(`[End Room] Teacher ending room ${cleanRoomId}`);
@@ -430,7 +443,7 @@ export const setupSocketHandlers = (io: Server) => {
       roomManager.deleteRoom(cleanRoomId);
     });
 
-    // 13. Handle Disconnection & Memory Cleanup
+    // 14. Handle Disconnection & Memory Cleanup
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
       const affected = roomManager.handleDisconnect(socket.id);

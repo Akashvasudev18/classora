@@ -45,7 +45,7 @@ export const StudentClassroom: React.FC = () => {
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
   const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
 
-  // Voice Communication & Permissions State (LiveKit Cloud)
+  // Voice Communication & Permissions State (LiveKit Cloud & Audio Relay)
   const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
   const [hasHandRaised, setHasHandRaised] = useState<boolean>(false);
   const [isSpeakingPermitted, setIsSpeakingPermitted] = useState<boolean>(false);
@@ -78,12 +78,12 @@ export const StudentClassroom: React.FC = () => {
 
     unlockAudioPlayer();
 
-    // Connect LiveKit Cloud Voice on Student Approval
+    // Connect LiveKit Cloud Voice or Web Audio Relay Engine on Student Approval
     const initVoice = async () => {
-      console.log(`[StudentClassroom] Requesting LiveKit voice token for room ${currentRoomId} as "${studentName}"...`);
+      console.log(`[StudentClassroom] Requesting voice token for room ${currentRoomId} as "${studentName}"...`);
       const tokenRes = await fetchLiveKitToken(currentRoomId, studentName, false);
       if (tokenRes.success && tokenRes.token) {
-        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, false);
+        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, false, studentName);
         setIsVoiceConnected(ok);
       }
     };

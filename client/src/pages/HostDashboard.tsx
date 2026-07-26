@@ -49,7 +49,7 @@ export const HostDashboard: React.FC = () => {
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | undefined>(undefined);
   const [analysisModelUsed, setAnalysisModelUsed] = useState<string | undefined>(undefined);
 
-  // Voice Communication & Permissions State (LiveKit Cloud & Built-in Engine)
+  // Voice Communication & Permissions State (LiveKit Cloud & Audio Relay)
   const [isVoiceConnected, setIsVoiceConnected] = useState<boolean>(false);
   const [raisedHands, setRaisedHands] = useState<string[]>([]);
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export const HostDashboard: React.FC = () => {
       console.log(`[HostDashboard] Requesting voice token for room ${currentRoomId}...`);
       const tokenRes = await fetchLiveKitToken(currentRoomId, "Teacher", true);
       if (tokenRes.success && tokenRes.token) {
-        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, true);
+        const ok = await livekitVoiceManager.connect(tokenRes.wsUrl, tokenRes.token, true, "Teacher");
         setIsVoiceConnected(ok);
       }
     };
@@ -227,10 +227,6 @@ export const HostDashboard: React.FC = () => {
   const handleAllowSpeaker = (studentId: string) => {
     console.log(`[HostDashboard] Allowing student ${studentId} to speak`);
     unlockAudioPlayer();
-    const targetStudent = students.find((s) => s.id === studentId);
-    if (targetStudent && targetStudent.socketId) {
-      livekitVoiceManager.initiateBuiltInPeerConnection(targetStudent.socketId);
-    }
     realtimeBus.emit("teacher-allow-speaker", { roomId: currentRoomId, studentId });
   };
 

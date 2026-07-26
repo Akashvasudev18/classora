@@ -26,7 +26,13 @@ export const StudentClassroom: React.FC = () => {
 
   const currentRoomId = (roomCode || "").toUpperCase();
   const studentName = (location.state as { studentName?: string })?.studentName || "Student";
-  const [studentId] = useState<string>(() => `student-${Math.random().toString(36).substring(2, 9)}`);
+  const [studentId] = useState<string>(() => {
+    const saved = sessionStorage.getItem("classora_student_id");
+    if (saved) return saved;
+    const newId = `student-${Math.random().toString(36).substring(2, 9)}`;
+    sessionStorage.setItem("classora_student_id", newId);
+    return newId;
+  });
 
   const [status, setStatus] = useState<"pending" | "approved" | "rejected" | "ended">("pending");
   const [rejectionReason, setRejectionReason] = useState<string>("");
@@ -40,12 +46,22 @@ export const StudentClassroom: React.FC = () => {
   const [practiceViewMode, setPracticeViewMode] = useState<"split" | "teacher" | "practice">("split");
   const [activePractice, setActivePractice] = useState<PracticeProblem | null>(null);
   const [isSessionEnded, setIsSessionEnded] = useState<boolean>(false);
-  const [practiceCode, setPracticeCode] = useState<string>(
-    "# Write your Python solution below\n\n"
-  );
+  const [practiceCode, setPracticeCode] = useState<string>(() => {
+    const saved = currentRoomId ? sessionStorage.getItem(`classora_practice_${currentRoomId}`) : null;
+    return saved || "# Write your Python solution below\n\n";
+  });
   const [practiceStdin, setPracticeStdin] = useState<string>("");
   const [isPracticeExecuting, setIsPracticeExecuting] = useState<boolean>(false);
   const [practiceResult, setPracticeResult] = useState<ExecutionResult | null>(null);
+
+  // Helper to change practice code and save draft to sessionStorage
+  const handlePracticeCodeChange = (newCode: string) => {
+    setPracticeCode(newCode);
+    practiceCodeRef.current = newCode;
+    if (currentRoomId) {
+      sessionStorage.setItem(`classora_practice_${currentRoomId}`, newCode);
+    }
+  };
 
   // Refs for practice state so socket event listeners read fresh state without triggering useEffect re-runs
   const practiceCodeRef = useRef<string>(practiceCode);
@@ -132,13 +148,12 @@ export const StudentClassroom: React.FC = () => {
         setIsPracticeEnabled(true);
         setIsSessionEnded(false);
 
-        // Preserve existing practice code if student has already started writing
-        setPracticeCode((prev) => {
-          if (!prev || prev.trim() === "" || prev === "# Write your Python solution below\n\n") {
-            return data.activePractice?.starterCode || "# Write your Python solution below\n\n";
-          }
-          return prev;
-        });
+        // Preserve existing practice code if student has already started writing or has saved draft
+        const savedDraft = currentRoomId ? sessionStorage.getItem(`classora_practice_${currentRoomId}`) : null;
+        if (!savedDraft || savedDraft.trim() === "" || savedDraft === "# Write your Python solution below\n\n") {
+          const starter = data.activePractice.starterCode || "# Write your Python solution below\n\n";
+          handlePracticeCodeChange(starter);
+        }
 
         if (data.activePractice.exampleInput && data.activePractice.exampleInput !== "None") {
           setPracticeStdin((prev) => prev || data.activePractice?.exampleInput || "");
@@ -220,24 +235,22 @@ export const StudentClassroom: React.FC = () => {
       if (data.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       console.log("[StudentClassroom] Practice Session Started:", data.practice.title);
 
-      const initialCode = data.practice.starterCode || "# Write your Python solution below\n\n";
+      const isSameProblem = activePracticeRef.current?.id === data.practice.id;
 
       setActivePractice(data.practice);
       setIsPracticeEnabled(true);
       setIsSessionEnded(false);
 
-      // Preserve existing code if receiving event for same practice problem
-      setPracticeCode((prev) => {
-        if (
-          activePracticeRef.current?.id === data.practice.id &&
-          prev &&
-          prev !== "# Write your Python solution below\n\n" &&
-          prev.trim().length > 0
-        ) {
-          return prev;
+      if (!isSameProblem) {
+        const starter = data.practice.starterCode || "# Write your Python solution below\n\n";
+        handlePracticeCodeChange(starter);
+      } else {
+        const savedDraft = currentRoomId ? sessionStorage.getItem(`classora_practice_${currentRoomId}`) : null;
+        if (!savedDraft || savedDraft.trim() === "" || savedDraft === "# Write your Python solution below\n\n") {
+          const starter = data.practice.starterCode || "# Write your Python solution below\n\n";
+          handlePracticeCodeChange(starter);
         }
-        return initialCode;
-      });
+      }
 
       setHintResult(null);
       setIsHintPanelOpen(false);
@@ -269,7 +282,7 @@ export const StudentClassroom: React.FC = () => {
     const handleTeacherEditedMyCode = (data: { code: string }) => {
       console.log("[StudentClassroom] Teacher pushed a live code fix to my editor!");
       if (data.code !== undefined) {
-        setPracticeCode(data.code);
+        handlePracticeCodeChange(data.code);
       }
     };
 
@@ -321,12 +334,11 @@ export const StudentClassroom: React.FC = () => {
               if (res.roomState.activePractice) {
                 setActivePractice(res.roomState.activePractice);
                 setIsPracticeEnabled(true);
-                setPracticeCode((prev) => {
-                  if (!prev || prev.trim() === "" || prev === "# Write your Python solution below\n\n") {
-                    return res.roomState.activePractice.starterCode || "# Write your Python solution below\n\n";
-                  }
-                  return prev;
-                });
+                const savedDraft = currentRoomId ? sessionStorage.getItem(`classora_practice_${currentRoomId}`) : null;
+                if (!savedDraft || savedDraft.trim() === "" || savedDraft === "# Write your Python solution below\n\n") {
+                  const starter = res.roomState.activePractice.starterCode || "# Write your Python solution below\n\n";
+                  handlePracticeCodeChange(starter);
+                }
               }
             }
           } else if (res && !res.success) {
@@ -681,7 +693,7 @@ export const StudentClassroom: React.FC = () => {
               )}
               <PracticeEditor
                 value={practiceCode}
-                onChange={setPracticeCode}
+                onChange={handlePracticeCodeChange}
                 onFork={handleForkTeacherCode}
                 onRun={handleRunPracticeCode}
                 isExecuting={isPracticeExecuting}
@@ -725,7 +737,7 @@ export const StudentClassroom: React.FC = () => {
                     {/* Student Practice Editor */}
                     <PracticeEditor
                       value={practiceCode}
-                      onChange={setPracticeCode}
+                      onChange={handlePracticeCodeChange}
                       onFork={handleForkTeacherCode}
                       onRun={handleRunPracticeCode}
                       isExecuting={isPracticeExecuting}

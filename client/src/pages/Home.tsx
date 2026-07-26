@@ -4,7 +4,6 @@ import { Video, LogIn, Users, Sparkles, Shield, Code2 } from "lucide-react";
 import { socket, useSocketStatus } from "../services/socket";
 import { Logo } from "../components/common/Logo";
 import { BrowserPreviewLoader } from "../components/common/BrowserPreviewLoader";
-import { Cube3DShowcase } from "../components/common/Cube3DShowcase";
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -97,11 +96,6 @@ export const Home: React.FC = () => {
         {/* Uiverse.io Browser Animation Showcase */}
         <div className="w-full mt-12 mb-4">
           <BrowserPreviewLoader />
-        </div>
-
-        {/* Uiverse.io 3D Rotating Cube Showcase (Classora, Collab, Learn, Code, Share, Practice) */}
-        <div className="w-full my-6 flex flex-col items-center">
-          <Cube3DShowcase />
         </div>
 
         {/* Feature Cards Grid */}

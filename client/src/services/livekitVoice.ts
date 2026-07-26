@@ -62,10 +62,13 @@ export function unlockAudioPlayer(): AudioContext {
   return getGlobalAudioContext();
 }
 
-// Global window click listener to guarantee browser AudioContext is unlocked on first user gesture
+// Global window click & touch listener to guarantee browser AudioContext is unlocked on first user gesture
 if (typeof window !== "undefined") {
   const handleUserGesture = () => {
-    getGlobalAudioContext();
+    const ctx = getGlobalAudioContext();
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
     window.removeEventListener("click", handleUserGesture);
     window.removeEventListener("touchstart", handleUserGesture);
   };
@@ -107,7 +110,7 @@ class WebAudioPCMEngine {
     } else {
       this.stopMicrophoneCapture();
     }
-    console.log(`[PCMEngine] Microphone set to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
+    console.log(`[PCMEngine] Microphone for room "${this.currentRoomId}" set to: ${enabled ? "ENABLED 🟢" : "MUTED 🔇"}`);
     return true;
   }
 
@@ -146,8 +149,8 @@ class WebAudioPCMEngine {
           pcmSamples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
-        // Only emit if there is active audio or periodic keep-alive
-        if (hasSound || Math.random() < 0.1) {
+        // Always emit audio samples to socket when mic is enabled
+        if (hasSound || Math.random() < 0.05) {
           socket.emit("broadcast-pcm-audio", {
             roomId: this.currentRoomId,
             pcmSamples: Array.from(pcmSamples),
@@ -158,8 +161,13 @@ class WebAudioPCMEngine {
       };
 
       this.mediaSource.connect(this.scriptProcessor);
-      this.scriptProcessor.connect(this.audioCtx.destination);
-      console.log(`[PCMEngine] Capturing real-time PCM audio at sampleRate: ${this.audioCtx.sampleRate} Hz`);
+      // Create silent gain node to drive ScriptProcessor without local speaker echo loop
+      const silentGain = this.audioCtx.createGain();
+      silentGain.gain.value = 0;
+      this.scriptProcessor.connect(silentGain);
+      silentGain.connect(this.audioCtx.destination);
+
+      console.log(`[PCMEngine] Capturing real-time PCM audio for room "${this.currentRoomId}" at sampleRate: ${this.audioCtx.sampleRate} Hz`);
     } catch (err) {
       console.warn("[PCMEngine] Error accessing microphone:", err);
     }
@@ -182,11 +190,15 @@ class WebAudioPCMEngine {
 
   private bindSocketListeners() {
     socket.off("receive-pcm-audio");
-    socket.on("receive-pcm-audio", ({ pcmSamples, sampleRate }: { pcmSamples: number[]; sampleRate: number }) => {
+    socket.on("receive-pcm-audio", ({ pcmSamples, sampleRate, roomId }: { pcmSamples: number[]; sampleRate: number; roomId?: string }) => {
+      if (roomId && roomId.toUpperCase() !== this.currentRoomId) return;
       if (!pcmSamples || pcmSamples.length === 0) return;
 
       try {
         const ctx = getGlobalAudioContext();
+        if (ctx.state === "suspended") {
+          ctx.resume().catch(() => {});
+        }
 
         // Convert Int16 PCM array back to Float32Array
         const float32Samples = new Float32Array(pcmSamples.length);
@@ -227,7 +239,7 @@ export class LiveKitVoiceManager {
   private onActiveSpeakersChangeCb?: (speakers: string[]) => void;
   private onConnectionStateChangeCb?: (connected: boolean) => void;
 
-  public async connect(wsUrl: string, token: string, isTeacher: boolean, identity: string = "User"): Promise<boolean> {
+  public async connect(wsUrl: string, token: string, isTeacher: boolean, identity: string = "User", roomId: string = ""): Promise<boolean> {
     unlockAudioPlayer();
 
     try {
@@ -263,7 +275,6 @@ export class LiveKitVoiceManager {
 
         this.room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
-            const ctx = getGlobalAudioContext();
             const el = document.createElement("audio");
             el.autoplay = true;
             track.attach(el);
@@ -283,8 +294,8 @@ export class LiveKitVoiceManager {
     }
 
     // 2. Guaranteed Fallback: Web Audio API PCM Sample Engine (Works on all mobile phones & tabs!)
-    console.log("[LiveKitVoice] Initializing Web Audio API PCM Engine...");
-    const ok = await this.pcmEngine.init(token || "ROOM", identity, isTeacher);
+    console.log(`[LiveKitVoice] Initializing Web Audio API PCM Engine for room "${roomId}"...`);
+    const ok = await this.pcmEngine.init(roomId, identity, isTeacher);
     this.isConnected = ok;
     this.voiceMode = "pcm";
     if (this.onConnectionStateChangeCb) this.onConnectionStateChangeCb(ok);

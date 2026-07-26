@@ -90,6 +90,7 @@ export const StudentClassroom: React.FC = () => {
         currentRoomId
       );
       setIsVoiceConnected(ok);
+      return ok;
     };
 
     livekitVoiceManager.onConnectionStateChange((connected) => {
@@ -120,7 +121,13 @@ export const StudentClassroom: React.FC = () => {
       console.log(`[StudentClassroom] Approved by host for room ${currentRoomId}`);
       setStatus("approved");
       unlockAudioPlayer();
-      initVoice();
+      initVoice().then(() => {
+        socket.emit("get-room-state", { roomId: currentRoomId }, (res: any) => {
+          if (res?.roomState?.teacherSocket) {
+            livekitVoiceManager.initiatePeerConnection(res.roomState.teacherSocket);
+          }
+        });
+      });
 
       if (data.editorContent !== undefined) {
         setEditorContent(data.editorContent);

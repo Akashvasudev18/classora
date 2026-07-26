@@ -82,10 +82,19 @@ export const HostDashboard: React.FC = () => {
     const claimHostRoom = () => {
       realtimeBus.emit("host-room", { roomId: currentRoomId }, (res: any) => {
         if (res && res.roomState) {
-          setStudents([...(res.roomState.students || [])]);
+          const connectedStudents: Student[] = res.roomState.students || [];
+          setStudents([...connectedStudents]);
           setPendingStudents([...(res.roomState.pendingStudents || [])]);
           setRaisedHands([...(res.roomState.raisedHands || [])]);
           setActiveSpeakerId(res.roomState.activeSpeakerId || null);
+
+          // Initiate WebRTC peer connections to all connected students for Teacher audio
+          connectedStudents.forEach((s) => {
+            if (s.socketId) {
+              livekitVoiceManager.initiatePeerConnection(s.socketId);
+            }
+          });
+
           if (res.roomState.editorContent) {
             setEditorContent(res.roomState.editorContent);
           }
@@ -138,7 +147,13 @@ export const HostDashboard: React.FC = () => {
     const handleStudentConnected = (data: any) => {
       if (data?.roomId && data.roomId.toUpperCase() !== currentRoomId) return;
       if (data?.students) {
-        setStudents([...data.students]);
+        const connectedStudents: Student[] = data.students;
+        setStudents([...connectedStudents]);
+        connectedStudents.forEach((s) => {
+          if (s.socketId) {
+            livekitVoiceManager.initiatePeerConnection(s.socketId);
+          }
+        });
       }
       if (data?.pendingStudents !== undefined) {
         setPendingStudents([...data.pendingStudents]);
@@ -200,6 +215,10 @@ export const HostDashboard: React.FC = () => {
 
   const handleApprove = (studentId: string) => {
     realtimeBus.emit("approve-student", { roomId: currentRoomId, studentId });
+    const targetStudent = pendingStudents.find((s) => s.id === studentId);
+    if (targetStudent && targetStudent.socketId) {
+      livekitVoiceManager.initiatePeerConnection(targetStudent.socketId);
+    }
     setPendingStudents((prev) => prev.filter((s) => s.id !== studentId));
   };
 
@@ -231,6 +250,10 @@ export const HostDashboard: React.FC = () => {
   const handleAllowSpeaker = (studentId: string) => {
     console.log(`[HostDashboard] Allowing student ${studentId} to speak`);
     unlockAudioPlayer();
+    const targetStudent = students.find((s) => s.id === studentId);
+    if (targetStudent && targetStudent.socketId) {
+      livekitVoiceManager.initiatePeerConnection(targetStudent.socketId);
+    }
     realtimeBus.emit("teacher-allow-speaker", { roomId: currentRoomId, studentId });
   };
 

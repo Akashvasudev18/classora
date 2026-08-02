@@ -10,16 +10,19 @@ export interface ExecutionResult {
 }
 
 const JUDGE0_API_URL = "https://ce.judge0.com/submissions?wait=true";
+const PAIZA_CREATE_URL = "https://api.paiza.io/runners/create";
+const PAIZA_DETAILS_URL = "https://api.paiza.io/runners/get_details";
 const WANDBOX_API_URL = "https://wandbox.org/api/compile.json";
 const PISTON_API_URL = "https://emkc.org/api/v2/piston/execute";
 const EXECUTION_TIMEOUT_MS = 10000;
 
 /**
- * Execute Python code via a resilient multi-tier engine strategy:
- * 1. Local Python runtime (child_process) for instant, 100% offline & reliable execution.
- * 2. Judge0 CE API (https://ce.judge0.com) high-availability public sandbox runner.
- * 3. Wandbox API fallback.
- * 4. Piston API fallback.
+ * Robust multi-tier Python execution service:
+ * Tier 1: Local Python process (sub-50ms, offline, zero rate limits)
+ * Tier 2: Judge0 CE Cloud API (high-availability sandbox)
+ * Tier 3: Paiza.io Cloud Runner API
+ * Tier 4: Wandbox Cloud API (with OCI error filtering)
+ * Tier 5: Piston API fallback
  */
 export async function executePythonCode(code: string, stdin: string = ""): Promise<ExecutionResult> {
   if (!code || code.trim() === "") {
@@ -57,6 +60,7 @@ export async function executePythonCode(code: string, stdin: string = ""): Promi
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Classora/1.0",
       },
       body: JSON.stringify({
         language_id: 71, // Python 3.8.1 / 3.x
@@ -76,31 +80,94 @@ export async function executePythonCode(code: string, stdin: string = ""): Promi
       const stderr = (data.stderr || data.compile_output || data.message || "").trim();
       const statusId = data.status?.id;
 
-      // Judge0 status id 3 is "Accepted"
-      const success = statusId === 3 && stderr.length === 0;
+      // Ensure no OCI runtime error leaks
+      const isOciError = stderr.includes("Resource temporarily unavailable") || stderr.includes("OCI runtime error");
 
-      let finalOutput = stdout;
-      if (!finalOutput && stderr) {
-        finalOutput = stderr;
-      }
-      if (!finalOutput) {
-        finalOutput = "Program completed with no output (Process exited cleanly).";
-      }
+      if (!isOciError) {
+        const success = statusId === 3 && stderr.length === 0;
 
-      return {
-        success,
-        output: finalOutput,
-        stderr: stderr || undefined,
-        exitCode: statusId === 3 ? 0 : 1,
-        durationMs,
-        stdin,
-      };
+        let finalOutput = stdout;
+        if (!finalOutput && stderr) {
+          finalOutput = stderr;
+        }
+        if (!finalOutput) {
+          finalOutput = "Program completed with no output (Process exited cleanly).";
+        }
+
+        return {
+          success,
+          output: finalOutput,
+          stderr: stderr || undefined,
+          exitCode: statusId === 3 ? 0 : 1,
+          durationMs,
+          stdin,
+        };
+      }
     }
   } catch (err: any) {
-    console.warn(`[ExecutionService] Judge0 CE engine unavailable (${err?.message}). Falling back to Wandbox...`);
+    console.warn(`[ExecutionService] Judge0 CE engine error (${err?.message}). Falling back to Paiza...`);
   }
 
-  // Tier 3: Wandbox Cloud API (Python 3.x)
+  // Tier 3: Paiza.io Cloud Runner API
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
+
+    const params = new URLSearchParams({
+      language: "python3",
+      source_code: code,
+      input: stdin,
+      api_key: "guest",
+    });
+
+    const response = await fetch(`${PAIZA_CREATE_URL}?${params.toString()}`, {
+      method: "POST",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Classora/1.0",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.id) {
+        // Poll Paiza for completed result (up to 3s)
+        let attempts = 0;
+        while (attempts < 6) {
+          await new Promise((r) => setTimeout(r, 500));
+          const detailRes = await fetch(`${PAIZA_DETAILS_URL}?id=${data.id}&api_key=guest`);
+          if (detailRes.ok) {
+            const detail = await detailRes.json();
+            if (detail.status === "completed") {
+              const durationMs = Date.now() - startTime;
+              const stdout = (detail.stdout || "").trim();
+              const stderr = (detail.stderr || detail.build_stderr || "").trim();
+              const exitCode = parseInt(detail.exit_code || "0", 10);
+              const success = detail.result === "success" && exitCode === 0 && stderr.length === 0;
+
+              let finalOutput = stdout || stderr || "Program completed with no output.";
+
+              return {
+                success,
+                output: finalOutput,
+                stderr: stderr || undefined,
+                exitCode,
+                durationMs,
+                stdin,
+              };
+            }
+          }
+          attempts++;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[ExecutionService] Paiza engine error (${err?.message}). Falling back to Wandbox...`);
+  }
+
+  // Tier 4: Wandbox Cloud API (Python 3.x with strict OCI error filter)
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);
@@ -109,6 +176,7 @@ export async function executePythonCode(code: string, stdin: string = ""): Promi
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Classora/1.0",
       },
       body: JSON.stringify({
         compiler: "cpython-3.12.7",
@@ -149,7 +217,7 @@ export async function executePythonCode(code: string, stdin: string = ""): Promi
     console.warn(`[ExecutionService] Wandbox engine error (${err?.message}).`);
   }
 
-  // Tier 4: Piston API (Fallback for custom self-hosted Piston instances)
+  // Tier 5: Piston API (Fallback for custom instances)
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS);

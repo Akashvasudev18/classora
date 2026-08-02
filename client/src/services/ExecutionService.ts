@@ -19,10 +19,16 @@ export async function runPythonCode(code: string, roomId: string, stdin: string 
   return new Promise((resolve) => {
     let hasResolved = false;
 
-    // 1. Try Socket.IO emit first (bypasses CORS & HTTP 404 proxy issues on Render)
+    const isInvalidResult = (res: ExecutionResult): boolean => {
+      if (!res || !res.output) return true;
+      const text = `${res.output} ${res.stderr || ""}`;
+      return text.includes("OCI runtime error") || text.includes("Resource temporarily unavailable");
+    };
+
+    // 1. Try Socket.IO emit first
     if (socketService.getSocket().connected) {
       socketService.emit("run-code", { roomId: cleanRoomId, code, stdin }, (res: ExecutionResult) => {
-        if (res && !hasResolved) {
+        if (res && !hasResolved && !isInvalidResult(res)) {
           hasResolved = true;
           resolve(formatExecutionOutput(res));
         }
@@ -44,7 +50,7 @@ export async function runPythonCode(code: string, roomId: string, stdin: string 
       .then(async (response) => {
         if (response.ok) {
           const data = await response.json();
-          if (!hasResolved) {
+          if (!hasResolved && !isInvalidResult(data)) {
             hasResolved = true;
             resolve(formatExecutionOutput(data));
           }

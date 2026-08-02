@@ -11,7 +11,7 @@ export interface ExecutionResult {
   stdin?: string;
 }
 
-const JUDGE0_DIRECT_URL = "https://ce.judge0.com/submissions?wait=true";
+const PISTON_V1_DIRECT_URL = "https://emkc.org/api/v1/piston/execute";
 
 export async function runPythonCode(code: string, roomId: string, stdin: string = ""): Promise<ExecutionResult> {
   const cleanRoomId = roomId.toUpperCase();
@@ -38,9 +38,9 @@ export async function runPythonCode(code: string, roomId: string, stdin: string 
       return text.includes("OCI runtime error") || text.includes("Resource temporarily unavailable");
     };
 
-    // Helper: Execute via Direct Judge0 CE client fallback
-    const tryDirectJudge0 = async () => {
-      const directRes = await runJudge0Client(code, stdin);
+    // Helper: Execute via Direct Piston API v1 client fallback
+    const tryDirectPistonV1 = async () => {
+      const directRes = await runPistonV1Client(code, stdin);
       if (directRes && !isInvalidResult(directRes)) {
         resolveOnce(directRes);
         return true;
@@ -54,8 +54,7 @@ export async function runPythonCode(code: string, roomId: string, stdin: string 
         if (res && !isInvalidResult(res)) {
           resolveOnce(res);
         } else {
-          // If server returned invalid OCI error via socket, fallback directly to Judge0 CE
-          await tryDirectJudge0();
+          await tryDirectPistonV1();
         }
       });
     }
@@ -78,50 +77,49 @@ export async function runPythonCode(code: string, roomId: string, stdin: string 
           if (!isInvalidResult(data)) {
             resolveOnce(data);
           } else {
-            // Server returned legacy OCI error, execute via Judge0 directly from client
-            await tryDirectJudge0();
+            await tryDirectPistonV1();
           }
         }
       })
       .catch(async () => {
-        await tryDirectJudge0();
+        await tryDirectPistonV1();
       });
 
-    // 3. Fallback trigger after 2.5s if backend server is slow / unresponsive / stuck on old build
+    // 3. Fallback trigger after 2 seconds to direct Piston API v1
     setTimeout(async () => {
       if (!hasResolved) {
-        const ok = await tryDirectJudge0();
+        const ok = await tryDirectPistonV1();
         if (!ok && !hasResolved) {
           resolveOnce({
             success: false,
-            output: "Execution Error: Unable to execute Python code at this time. Please check your network connection.",
+            output: "Execution Error: Unable to execute Python code. Please check your network connection.",
             stderr: "Execution timeout.",
             exitCode: 124,
             stdin,
           });
         }
       }
-    }, 2500);
+    }, 2000);
   });
 }
 
 /**
- * Executes Python code directly from client browser using Judge0 CE public API.
+ * Executes Python code directly from client browser using Piston API v1 endpoint.
  */
-async function runJudge0Client(code: string, stdin: string): Promise<ExecutionResult | null> {
+async function runPistonV1Client(code: string, stdin: string): Promise<ExecutionResult | null> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch(JUDGE0_DIRECT_URL, {
+    const response = await fetch(PISTON_V1_DIRECT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        language_id: 71, // Python 3.8.1 / 3.x
-        source_code: code,
-        stdin,
+        language: "python3",
+        source: code,
+        stdin: stdin || "",
       }),
       signal: controller.signal,
     });
@@ -130,11 +128,10 @@ async function runJudge0Client(code: string, stdin: string): Promise<ExecutionRe
 
     if (response.ok) {
       const data = await response.json();
-      const stdout = (data.stdout || "").trim();
-      const stderr = (data.stderr || data.compile_output || data.message || "").trim();
-      const statusId = data.status?.id;
+      const stdout = (data.stdout || data.output || "").trim();
+      const stderr = (data.stderr || "").trim();
 
-      const success = statusId === 3 && stderr.length === 0;
+      const success = data.ran === true && stderr.length === 0;
       let finalOutput = stdout;
       if (!finalOutput && stderr) {
         finalOutput = stderr;
@@ -147,7 +144,7 @@ async function runJudge0Client(code: string, stdin: string): Promise<ExecutionRe
         success,
         output: finalOutput,
         stderr: stderr || undefined,
-        exitCode: statusId === 3 ? 0 : 1,
+        exitCode: stderr.length > 0 ? 1 : 0,
         stdin,
       };
     }

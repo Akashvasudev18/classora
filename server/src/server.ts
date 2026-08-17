@@ -225,7 +225,7 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Classora Backend Server running on port ${PORT}`);
   console.log(`⚡ Socket.IO transports: ["websocket", "polling"]`);
   console.log(`🎙️ LiveKit Voice API: GET /api/livekit/token`);
-  console.log(`🤖 AI Engine Configured: YES (Groq / OpenRouter)`);
+  console.log(`🤖 AI Engine Configured: YES (OpenRouter AI Engine)`);
   console.log(`🔒 Allowed Origins: ${rawOrigins}`);
   console.log(`=================================`);
 });

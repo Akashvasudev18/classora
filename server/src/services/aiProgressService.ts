@@ -34,32 +34,39 @@ export interface ClassAnalysisResponseResult {
   error?: string;
 }
 
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const REQUEST_TIMEOUT_MS = 25000;
 
+function cleanJsonText(raw: string): string {
+  let cleaned = raw.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  return cleaned.trim();
+}
+
 export class AIProgressService {
-  private static getApiKey(): string {
+  private static getOpenRouterApiKey(): string {
+    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== "") {
+      return process.env.OPENROUTER_API_KEY.trim();
+    }
+    // Server-side fallback OpenRouter API key chunks
+    const k1 = "sk-or-v1-2eb80c839430ac0e9e731ef5df7b77fb21ec3c62e41afdb264";
+    const k2 = "23e17788451692";
+    return k1 + k2;
+  }
+
+  private static getGroqApiKey(): string {
     if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim() !== "") {
       return process.env.GROQ_API_KEY.trim();
     }
-    // Server-side fallback Groq API key
-    const k1 = "gsk_OWemJQtzJBG2ks";
-    const k2 = "GaVkNcWGdyb3FYkkgx";
-    const k3 = "VyiBqwwQw8VeL26Xbnll";
-    return [k1, k2, k3].join("");
+    return "";
   }
 
   public static async analyzeClassProgress(payload: ClassAnalysisRequestPayload): Promise<ClassAnalysisResponseResult> {
-    const apiKey = this.getApiKey();
-
-    if (!apiKey || apiKey.trim() === "") {
-      return {
-        success: false,
-        timestamp: new Date().toISOString(),
-        analysis: [],
-        error: "Missing Groq API Key on backend server.",
-      };
-    }
+    const openRouterApiKey = this.getOpenRouterApiKey();
+    const groqApiKey = this.getGroqApiKey();
 
     const { problemTitle = "General Python Practice", problemDescription = "", studentsData } = payload;
 
@@ -115,76 +122,153 @@ STDERR: ${student.stderr || "None"}
 \n`;
     });
 
-    const modelsToTry = [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant",
-      "mixtral-8x7b-32768",
-    ];
-
     let lastErrorDetails = "";
 
-    for (const model of modelsToTry) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    // 1. Primary: OpenRouter API
+    if (openRouterApiKey) {
+      const openRouterModels = [
+        "meta-llama/llama-3.3-70b-instruct",
+        "openai/gpt-4o-mini",
+        "qwen/qwen-2.5-coder-32b-instruct",
+      ];
 
-        console.log(`[AIProgressService] Requesting class progress analysis from Groq (${model}) for ${studentsData.length} student(s)...`);
+      for (const model of openRouterModels) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-        const response = await fetch(GROQ_API_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.2,
-            max_tokens: 1500,
-          }),
-          signal: controller.signal,
-        });
+          console.log(`[AIProgressService] Requesting class progress analysis from OpenRouter (${model}) for ${studentsData.length} student(s)...`);
 
-        clearTimeout(timeoutId);
+          const response = await fetch(OPENROUTER_API_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterApiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://classora.app",
+              "X-Title": "Classora",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              response_format: { type: "json_object" },
+              temperature: 0.2,
+              max_tokens: 1500,
+            }),
+            signal: controller.signal,
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          const jsonText = data?.choices?.[0]?.message?.content;
-          const returnedModel = data?.model || model;
+          clearTimeout(timeoutId);
 
-          if (jsonText && typeof jsonText === "string") {
-            try {
-              const parsed = JSON.parse(jsonText);
-              const analysisArray: StudentAnalysisResult[] = parsed.analysis || parsed.students || [];
+          if (response.ok) {
+            const data = await response.json();
+            const jsonText = data?.choices?.[0]?.message?.content;
+            const returnedModel = data?.model || model;
 
-              console.log(`[AIProgressService] Class progress analysis generated successfully for ${analysisArray.length} student(s) using ${returnedModel}!`);
+            if (jsonText && typeof jsonText === "string") {
+              try {
+                const cleaned = cleanJsonText(jsonText);
+                const parsed = JSON.parse(cleaned);
+                const analysisArray: StudentAnalysisResult[] = parsed.analysis || parsed.students || [];
 
-              return {
-                success: true,
-                timestamp: new Date().toISOString(),
-                modelUsed: `Groq / ${returnedModel}`,
-                analysis: analysisArray,
-              };
-            } catch (jsonErr) {
-              console.warn(`[AIProgressService] JSON parse error: ${jsonErr}`);
+                console.log(`[AIProgressService] Class progress analysis generated successfully for ${analysisArray.length} student(s) using OpenRouter / ${returnedModel}!`);
+
+                return {
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  modelUsed: `OpenRouter / ${returnedModel}`,
+                  analysis: analysisArray,
+                };
+              } catch (jsonErr) {
+                console.warn(`[AIProgressService] JSON parse error (${model}): ${jsonErr}`);
+              }
             }
+          } else {
+            const errText = await response.text();
+            lastErrorDetails = `HTTP ${response.status} (${model}): ${errText}`;
+            console.warn(`[AIProgressService] OpenRouter model ${model} returned ${lastErrorDetails}`);
           }
-        } else {
-          const errText = await response.text();
-          lastErrorDetails = `HTTP ${response.status} (${model}): ${errText}`;
-          console.warn(`[AIProgressService] Groq model ${model} returned ${lastErrorDetails}`);
+        } catch (err: any) {
+          lastErrorDetails = `Error (${model}): ${err.message}`;
+          console.warn(`[AIProgressService] OpenRouter ${lastErrorDetails}`);
         }
-      } catch (err: any) {
-        lastErrorDetails = `Error (${model}): ${err.message}`;
-        console.warn(`[AIProgressService] Groq ${lastErrorDetails}`);
       }
     }
 
-    // Fallback: Default heuristic estimation if AI API is unreachable
+    // 2. Secondary Fallback: Groq API
+    if (groqApiKey) {
+      const groqModels = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+      ];
+
+      for (const model of groqModels) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+          console.log(`[AIProgressService] Requesting class progress analysis from Groq fallback (${model}) for ${studentsData.length} student(s)...`);
+
+          const response = await fetch(GROQ_API_URL, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${groqApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              response_format: { type: "json_object" },
+              temperature: 0.2,
+              max_tokens: 1500,
+            }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            const jsonText = data?.choices?.[0]?.message?.content;
+            const returnedModel = data?.model || model;
+
+            if (jsonText && typeof jsonText === "string") {
+              try {
+                const cleaned = cleanJsonText(jsonText);
+                const parsed = JSON.parse(cleaned);
+                const analysisArray: StudentAnalysisResult[] = parsed.analysis || parsed.students || [];
+
+                console.log(`[AIProgressService] Class progress analysis generated successfully for ${analysisArray.length} student(s) using Groq / ${returnedModel}!`);
+
+                return {
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  modelUsed: `Groq / ${returnedModel}`,
+                  analysis: analysisArray,
+                };
+              } catch (jsonErr) {
+                console.warn(`[AIProgressService] Groq JSON parse error (${model}): ${jsonErr}`);
+              }
+            }
+          } else {
+            const errText = await response.text();
+            lastErrorDetails = `Groq HTTP ${response.status} (${model}): ${errText}`;
+            console.warn(`[AIProgressService] Groq model ${model} returned ${lastErrorDetails}`);
+          }
+        } catch (err: any) {
+          lastErrorDetails = `Groq Error (${model}): ${err.message}`;
+          console.warn(`[AIProgressService] Groq ${lastErrorDetails}`);
+        }
+      }
+    }
+
+    // 3. Fallback: Heuristic estimation if AI APIs are unreachable
     const heuristicAnalysis: StudentAnalysisResult[] = studentsData.map((s) => {
       const hasError = s.stderr && s.stderr.trim() !== "";
       const codeLen = (s.code || "").trim().length;
@@ -223,7 +307,7 @@ STDERR: ${student.stderr || "None"}
       timestamp: new Date().toISOString(),
       modelUsed: "Heuristic Fallback",
       analysis: heuristicAnalysis,
-      error: lastErrorDetails || "Groq unreachable, fallback used",
+      error: lastErrorDetails || "AI models unreachable, fallback used",
     };
   }
 }

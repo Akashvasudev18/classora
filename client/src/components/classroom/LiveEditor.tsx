@@ -117,7 +117,9 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
             readOnly: !isHost,
             domReadOnly: !isHost,
             fontSize: 15,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+            letterSpacing: 0,
+            fontLigatures: false,
             lineNumbers: "on",
             autoIndent: "full",
             matchBrackets: "always",
@@ -128,6 +130,7 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
             automaticLayout: true,
             padding: { top: 14, bottom: 14 },
             cursorBlinking: isHost ? "blink" : "solid",
+            cursorSmoothCaretAnimation: "on",
             smoothScrolling: true,
             wordWrap: "on",
           }}

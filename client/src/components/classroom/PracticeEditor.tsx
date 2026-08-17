@@ -74,7 +74,9 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
           options={{
             readOnly: false,
             fontSize: 15,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+            letterSpacing: 0,
+            fontLigatures: false,
             lineNumbers: "on",
             autoIndent: "full",
             matchBrackets: "always",
@@ -85,6 +87,7 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
             automaticLayout: true,
             padding: { top: 14, bottom: 14 },
             cursorBlinking: "blink",
+            cursorSmoothCaretAnimation: "on",
             smoothScrolling: true,
             wordWrap: "on",
           }}

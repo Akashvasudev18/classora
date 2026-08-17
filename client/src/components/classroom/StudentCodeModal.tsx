@@ -137,13 +137,16 @@ export const StudentCodeModal: React.FC<StudentCodeModalProps> = ({
             options={{
               readOnly: false,
               fontSize: 14,
-              fontFamily: "'JetBrains Mono', monospace",
+              fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+              letterSpacing: 0,
+              fontLigatures: false,
               lineNumbers: "on",
               folding: true,
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               automaticLayout: true,
               padding: { top: 12, bottom: 12 },
+              cursorSmoothCaretAnimation: "on",
               wordWrap: "on",
             }}
           />

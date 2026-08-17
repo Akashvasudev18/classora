@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import Editor, { OnChange } from "@monaco-editor/react";
+import React, { useState, useRef } from "react";
+import Editor, { OnChange, OnMount } from "@monaco-editor/react";
 import { Code, Radio, Copy, Check } from "lucide-react";
 import { RunButton } from "./RunButton";
 import { TerminalPanel } from "./TerminalPanel";
@@ -30,6 +30,19 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
   onChangeStdin,
 }) => {
   const [copied, setCopied] = useState(false);
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    // Force Monaco to measure exact font metrics on mount and when web fonts load
+    monaco.editor.remeasureFonts();
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.ready.then(() => {
+        monaco.editor.remeasureFonts();
+      });
+    }
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
@@ -113,15 +126,17 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
           theme="vs-dark"
           value={value !== undefined && value !== null ? value : "# Welcome to Classora Live Python Classroom!\n# Live Python code broadcast by teacher appears here.\n"}
           onChange={handleEditorChange}
+          onMount={handleEditorDidMount}
           options={{
             readOnly: !isHost,
             domReadOnly: !isHost,
             fontSize: 15,
-            fontFamily: "JetBrains Mono, Consolas, Courier New, monospace",
+            fontFamily: "Consolas, 'Courier New', monospace",
             letterSpacing: 0,
             fontLigatures: false,
             cursorStyle: "line",
             cursorWidth: 2,
+            disableLayerHinting: true,
             lineNumbers: "on",
             autoIndent: "full",
             matchBrackets: "always",
@@ -132,7 +147,7 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
             automaticLayout: true,
             padding: { top: 14, bottom: 14 },
             cursorBlinking: isHost ? "smooth" : "solid",
-            cursorSmoothCaretAnimation: "on",
+            cursorSmoothCaretAnimation: "off",
             smoothScrolling: true,
             wordWrap: "on",
           }}

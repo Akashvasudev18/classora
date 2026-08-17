@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import Editor, { OnChange } from "@monaco-editor/react";
+import React, { useState, useEffect, useRef } from "react";
+import Editor, { OnChange, OnMount } from "@monaco-editor/react";
 import { X, RefreshCw, Eye, UserCheck, Send, Terminal, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Student } from "./WaitingRoomPanel";
 import { ExecutionResult } from "../../services/ExecutionService";
@@ -34,6 +34,20 @@ export const StudentCodeModal: React.FC<StudentCodeModalProps> = ({
   }, [code]);
 
   if (!isOpen || !student) return null;
+
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    // Force Monaco to measure exact font metrics on mount and when web fonts load
+    monaco.editor.remeasureFonts();
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.ready.then(() => {
+        monaco.editor.remeasureFonts();
+      });
+    }
+  };
 
   const handleEditorChange: OnChange = (newValue) => {
     if (newValue !== undefined) {
@@ -134,14 +148,16 @@ export const StudentCodeModal: React.FC<StudentCodeModalProps> = ({
             theme="vs-dark"
             value={editedCode}
             onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
             options={{
               readOnly: false,
               fontSize: 14,
-              fontFamily: "JetBrains Mono, Consolas, Courier New, monospace",
+              fontFamily: "Consolas, 'Courier New', monospace",
               letterSpacing: 0,
               fontLigatures: false,
               cursorStyle: "line",
               cursorWidth: 2,
+              disableLayerHinting: true,
               lineNumbers: "on",
               folding: true,
               minimap: { enabled: false },
@@ -149,7 +165,7 @@ export const StudentCodeModal: React.FC<StudentCodeModalProps> = ({
               automaticLayout: true,
               padding: { top: 12, bottom: 12 },
               cursorBlinking: "smooth",
-              cursorSmoothCaretAnimation: "on",
+              cursorSmoothCaretAnimation: "off",
               wordWrap: "on",
             }}
           />

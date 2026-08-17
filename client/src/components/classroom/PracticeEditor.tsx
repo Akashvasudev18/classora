@@ -1,5 +1,5 @@
-import React from "react";
-import Editor, { OnChange } from "@monaco-editor/react";
+import React, { useRef } from "react";
+import Editor, { OnChange, OnMount } from "@monaco-editor/react";
 import { PracticeToolbar } from "./PracticeToolbar";
 import { CustomInputPanel } from "./CustomInputPanel";
 import { TerminalPanel } from "./TerminalPanel";
@@ -42,6 +42,20 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
   onToggleHintPanel = () => {},
   onCloseHintPanel = () => {},
 }) => {
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+
+    // Force Monaco to measure exact font metrics on mount and when web fonts load
+    monaco.editor.remeasureFonts();
+    if (typeof document !== "undefined" && document.fonts) {
+      document.fonts.ready.then(() => {
+        monaco.editor.remeasureFonts();
+      });
+    }
+  };
+
   const handleEditorChange: OnChange = (newValue) => {
     if (newValue !== undefined) {
       onChange(newValue);
@@ -71,14 +85,16 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
           theme="vs-dark"
           value={value}
           onChange={handleEditorChange}
+          onMount={handleEditorDidMount}
           options={{
             readOnly: false,
             fontSize: 15,
-            fontFamily: "JetBrains Mono, Consolas, Courier New, monospace",
+            fontFamily: "Consolas, 'Courier New', monospace",
             letterSpacing: 0,
             fontLigatures: false,
             cursorStyle: "line",
             cursorWidth: 2,
+            disableLayerHinting: true,
             lineNumbers: "on",
             autoIndent: "full",
             matchBrackets: "always",
@@ -89,7 +105,7 @@ export const PracticeEditor: React.FC<PracticeEditorProps> = ({
             automaticLayout: true,
             padding: { top: 14, bottom: 14 },
             cursorBlinking: "smooth",
-            cursorSmoothCaretAnimation: "on",
+            cursorSmoothCaretAnimation: "off",
             smoothScrolling: true,
             wordWrap: "on",
           }}
